@@ -93,13 +93,16 @@ variables always hold the inverter's name, `{{triggerEvent.data.name}}`,
 and its serial number, `{{triggerEvent.data.serial}}`.
 
 - The action **set the solar power limit** takes an inverter and a value in
-  W, and gives `{{limit}}`, the limit applied.
+  W, and gives `limit`, the limit applied.
 - The action **read the solar production** takes an inverter, or none for
-  all of them, and gives `{{power}}` (W), `{{energy_today}}` and
-  `{{energy_total}}` (kWh), `{{producing}}`, `{{sleeping}}` and
-  `{{inverters}}` (how many were counted), for a message or a condition. It
-  uses the last readings; only an inverter not read yet since the start is
-  read first.
+  all of them, and gives `power` (W), `energy_today` and `energy_total`
+  (kWh), `producing`, `sleeping` and `inverters` (how many were counted),
+  for a message or a condition. It uses the last readings; only an inverter
+  not read yet since the start is read first.
+
+The following actions of the scene find these outputs in their variable
+list (written `{{<step>.<action>.<key>}}`, for instance `{{0.0.power}}` when
+the read action is the first of the scene).
 
 ## Troubleshooting
 

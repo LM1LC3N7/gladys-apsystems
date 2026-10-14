@@ -100,13 +100,16 @@ n'importe lequel. Les variables contiennent toujours le nom de l'onduleur,
 `{{triggerEvent.data.serial}}`.
 
 - L'action **régler la limite de puissance solaire** prend un onduleur et
-  une valeur en W, et donne `{{limit}}`, la limite appliquée.
+  une valeur en W, et donne `limit`, la limite appliquée.
 - L'action **lire la production solaire** prend un onduleur, ou aucun pour
-  tous, et donne `{{power}}` (W), `{{energy_today}}` et `{{energy_total}}`
-  (kWh), `{{producing}}`, `{{sleeping}}` et `{{inverters}}` (le nombre
-  d'onduleurs comptés), pour un message ou une condition. Elle utilise les
-  dernières lectures ; seul un onduleur pas encore lu depuis le démarrage est
-  lu d'abord.
+  tous, et donne `power` (W), `energy_today` et `energy_total` (kWh),
+  `producing`, `sleeping` et `inverters` (le nombre d'onduleurs comptés),
+  pour un message ou une condition. Elle utilise les dernières lectures ;
+  seul un onduleur pas encore lu depuis le démarrage est lu d'abord.
+
+Les actions suivantes de la scène trouvent ces sorties dans leur liste de
+variables (écrites `{{<étape>.<action>.<clé>}}`, par exemple `{{0.0.power}}`
+quand l'action de lecture est la première de la scène).
 
 ## Dépannage
 
