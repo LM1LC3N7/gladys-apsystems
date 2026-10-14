@@ -1,6 +1,6 @@
 {
   "name": "gladys-apsystems",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "APsystems EZ1 micro-inverters (balcony solar) for Gladys Assistant through their local API: live production per panel, daily and lifetime energy, power limit, on/off, alarms, scene triggers and a dashboard widget.",
   "type": "module",

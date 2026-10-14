@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-14
+
 ### Added
 
 - One device per APsystems EZ1 micro-inverter, typed by IP address and
@@ -35,3 +37,6 @@ the notes of the version's GitHub Release.
 - Dashboard widget "Solar production": one inverter (live tiles, panels,
   limit, state, alarms) or the totals of all of them.
 - "Test the inverters" button.
+
+[Unreleased]: https://github.com/LM1LC3N7/gladys-apsystems/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-apsystems/releases/tag/v0.1.1
