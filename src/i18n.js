@@ -1,0 +1,88 @@
+// -----------------------------------------------------------------------------
+// Runtime texts shown in Gladys (connection status, button results, widget).
+// -----------------------------------------------------------------------------
+
+const plural = (n, one, many) => (n === 1 ? one : many);
+
+/** The state of an inverter, as a label: see `statusOf` in src/app.js. */
+export const STATUS = {
+  producing: { en: 'Producing', fr: 'En production' },
+  idle: { en: 'Not producing', fr: 'Pas de production' },
+  off: { en: 'Switched off', fr: 'Éteint' },
+  asleep: { en: 'Sleeping (night)', fr: 'En veille (nuit)' },
+  unreachable: { en: 'Not answering', fr: 'Ne répond pas' },
+  waiting: { en: 'Waiting for a reading', fr: 'En attente d’une lecture' },
+};
+
+export const T = {
+  noHost: {
+    en: 'No inverter yet: type the IP address of each EZ1 (local mode on, port 8050) in the configuration.',
+    fr: 'Aucun onduleur : saisissez l’adresse IP de chaque EZ1 (mode local activé, port 8050) dans la configuration.',
+  },
+  invalidHosts: (positions) =>
+    positions.length === 1
+      ? {
+          en: `Entry ${positions[0]} of the address list is not an IP address or a host name: it is ignored.`,
+          fr: `L’entrée ${positions[0]} de la liste d’adresses n’est ni une adresse IP ni un nom d’hôte : elle est ignorée.`,
+        }
+      : {
+          en: `Entries ${positions.join(', ')} of the address list are not IP addresses or host names: they are ignored.`,
+          fr: `Les entrées ${positions.join(', ')} de la liste d’adresses ne sont ni des adresses IP ni des noms d’hôte : elles sont ignorées.`,
+        },
+  notCreated: (found) => ({
+    en: `${found} ${plural(found, 'inverter answers', 'inverters answer')}: open Discovery and add ${plural(found, 'it', 'them')}.`,
+    fr: `${found} onduleur${plural(found, ' répond', 's répondent')} : ouvrez Découverte et ajoutez-le${plural(found, '', 's')}.`,
+  }),
+  nobodyAnswers: {
+    en: 'No inverter answers yet: normal at night (the EZ1 sleeps without sun). Discovery will list them once they wake up.',
+    fr: 'Aucun onduleur ne répond encore : normal la nuit (l’EZ1 dort sans soleil). Découverte les listera à leur réveil.',
+  },
+  // No live figure here: the status only changes on a transition, so it is
+  // not sent to Gladys at every reading.
+  ok: ({ total, producing, asleep }) => ({
+    en: `${total} ${plural(total, 'inverter', 'inverters')}: ${producing} producing${asleep > 0 ? `, ${asleep} asleep (night, normal)` : ''}.`,
+    fr: `${total} onduleur${plural(total, '', 's')} : ${producing} en production${asleep > 0 ? `, ${asleep} en veille (nuit, normal)` : ''}.`,
+  }),
+  unreachable: (names) => ({
+    en: `Not answering while the sun is up: ${names.join(', ')}. Check the inverter's Wi-Fi, its address and that local mode is still on.`,
+    fr: `Ne répond pas alors qu’il fait jour : ${names.join(', ')}. Vérifiez le Wi-Fi de l’onduleur, son adresse et que le mode local est toujours activé.`,
+  }),
+  test: {
+    answers: (key, info, output) => ({
+      en: `${key}: ${info.model} ${info.serial} (firmware ${info.devVer ?? '?'}), ${output.power} W now, ${output.lifetime} kWh lifetime.`,
+      fr: `${key} : ${info.model} ${info.serial} (firmware ${info.devVer ?? '?'}), ${output.power} W en ce moment, ${output.lifetime} kWh au total.`,
+    }),
+    silent: (key, message) => ({
+      en: `${key}: no answer (${message}). Normal at night; by day check the address and that local mode is on (AP EasyPower app, "Continuous").`,
+      fr: `${key} : pas de réponse (${message}). Normal la nuit ; de jour, vérifiez l’adresse et que le mode local est activé (application AP EasyPower, « Continu »).`,
+    }),
+    failed: (key, message) => ({
+      en: `${key}: ${message}.`,
+      fr: `${key} : ${message}.`,
+    }),
+  },
+  widget: {
+    title: { en: 'Solar production', fr: 'Production solaire' },
+    none: {
+      en: 'No inverter yet: add one from Discovery',
+      fr: 'Aucun onduleur : ajoutez-en un depuis Découverte',
+    },
+    notLoaded: { en: 'Waiting for the first reading…', fr: 'En attente de la première lecture…' },
+    power: { en: 'Power', fr: 'Puissance' },
+    today: { en: 'Today', fr: 'Aujourd’hui' },
+    lifetime: { en: 'Lifetime', fr: 'Total' },
+    input: (n) => ({ en: `Panel ${n}`, fr: `Panneau ${n}` }),
+    limit: { en: 'Power limit', fr: 'Limite de puissance' },
+    state: { en: 'State', fr: 'État' },
+    alarm: { en: 'Alarm', fr: 'Alarme' },
+    alarms: {
+      off_grid: { en: 'Off grid', fr: 'Hors réseau' },
+      output_fault: { en: 'Output fault', fr: 'Défaut de sortie' },
+      dc: (n) => ({ en: `DC ${n} short circuit`, fr: `Court-circuit DC ${n}` }),
+    },
+    caption: {
+      en: 'Unofficial connector, not affiliated with APsystems',
+      fr: 'Connecteur non officiel, sans lien avec APsystems',
+    },
+  },
+};

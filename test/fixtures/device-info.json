@@ -1,0 +1,12 @@
+{
+  "data": {
+    "deviceId": "E07000000001",
+    "devVer": "EZ1 1.6.0",
+    "ssid": "home-wifi",
+    "ipAddr": "192.168.1.50",
+    "minPower": "30",
+    "maxPower": "800"
+  },
+  "message": "SUCCESS",
+  "deviceId": "E07000000001"
+}

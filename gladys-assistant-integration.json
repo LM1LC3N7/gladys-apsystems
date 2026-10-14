@@ -1,0 +1,292 @@
+{
+  "manifest_version": 1,
+  "type": "device",
+  "name": "APsystems EZ1",
+  "description": {
+    "en": "Unofficial connector: APsystems EZ1 micro-inverters, live solar production and power limit.",
+    "fr": "Connecteur non officiel : micro-onduleurs APsystems EZ1, production solaire et limite de puissance."
+  },
+  "version": "0.1.0",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-apsystems:0.1.0",
+  "gladys_version": ">=5.1.0",
+  "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-apsystems/main/cover.png",
+  "categories": ["energy"],
+  "transports": ["local"],
+  "config_schema": [
+    {
+      "key": "intro",
+      "type": "section",
+      "label": {
+        "en": "Your EZ1 micro-inverters in Gladys",
+        "fr": "Vos micro-onduleurs EZ1 dans Gladys"
+      },
+      "description": {
+        "en": "Unofficial connector, not affiliated with APsystems. It reads your EZ1 micro-inverters (balcony solar) on your local network, through the local API each inverter opens once \"Local mode\" is enabled in the AP EasyPower app (choose \"Continuous\"): no cloud, no account. One device per inverter: production power (total and per panel), energy of the day, lifetime energy for the Gladys energy monitoring, power limit, on/off and alarms. Scene triggers when production starts or stops and on an alarm, scene actions to set the power limit and read the production, a dashboard widget. At night an EZ1 sleeps (no sun, no Wi-Fi): that is normal, not an error.",
+        "fr": "Connecteur non officiel, sans lien avec APsystems. Il lit vos micro-onduleurs EZ1 (solaire de balcon) sur votre réseau local, via l'API locale que chaque onduleur ouvre une fois le « Mode local » activé dans l'application AP EasyPower (choisissez « Continu ») : ni cloud ni compte. Un appareil par onduleur : puissance produite (totale et par panneau), énergie du jour, énergie totale pour le suivi énergétique de Gladys, limite de puissance, marche/arrêt et alarmes. Des déclencheurs de scène au début et à la fin de la production et sur alarme, des actions de scène pour régler la limite et lire la production, un widget. La nuit, un EZ1 dort (pas de soleil, pas de Wi-Fi) : c'est normal, pas une erreur."
+      },
+      "links": [
+        {
+          "url": "https://github.com/LM1LC3N7/gladys-apsystems/blob/main/docs/fr.md",
+          "label": { "en": "Guide (French)", "fr": "Guide (français)" }
+        },
+        {
+          "url": "https://github.com/LM1LC3N7/gladys-apsystems/blob/main/docs/en.md",
+          "label": { "en": "Guide (English)", "fr": "Guide (anglais)" }
+        }
+      ]
+    },
+    {
+      "key": "hosts",
+      "type": "string",
+      "label": { "en": "Inverter addresses", "fr": "Adresses des onduleurs" },
+      "description": {
+        "en": "The IP address of each EZ1, separated by commas (port 8050 by default, add :port otherwise). Give each inverter a fixed address in your router (DHCP reservation). Then open Discovery.",
+        "fr": "L'adresse IP de chaque EZ1, séparées par des virgules (port 8050 par défaut, ajoutez :port sinon). Donnez à chaque onduleur une adresse fixe dans votre box (réservation DHCP). Ouvrez ensuite Découverte."
+      },
+      "required": false,
+      "placeholder": {
+        "en": "192.168.1.50, 192.168.1.51",
+        "fr": "192.168.1.50, 192.168.1.51"
+      }
+    },
+    {
+      "key": "poll_interval",
+      "type": "number",
+      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
+      "description": {
+        "en": "How often the production is read. The EZ1 is slow to answer: 30 s is a good pace, 10 s the minimum. At night a sleeping inverter is tried every 5 minutes only.",
+        "fr": "Fréquence de lecture de la production. L'EZ1 répond lentement : 30 s est un bon rythme, 10 s le minimum. La nuit, un onduleur en veille n'est essayé que toutes les 5 minutes."
+      },
+      "required": false,
+      "default": 30,
+      "min": 10,
+      "max": 300
+    }
+  ],
+  "actions": [
+    {
+      "key": "test_connection",
+      "timeout_seconds": 60,
+      "label": { "en": "Test the inverters", "fr": "Tester les onduleurs" },
+      "description": {
+        "en": "Asks each address above who answers: model, serial, firmware, power now. At night the inverters sleep: test by day.",
+        "fr": "Demande à chaque adresse ci-dessus qui répond : modèle, numéro de série, firmware, puissance actuelle. La nuit les onduleurs dorment : testez de jour."
+      }
+    }
+  ],
+  "widgets": [
+    {
+      "key": "solar",
+      "label": { "en": "Solar production", "fr": "Production solaire" },
+      "description": {
+        "en": "Power now, energy today and lifetime, per panel, limit and state of an inverter, or of all of them.",
+        "fr": "Puissance, énergie du jour et totale, par panneau, limite et état d'un onduleur, ou de tous."
+      },
+      "icon": "sun",
+      "settings": [
+        {
+          "key": "inverter",
+          "type": "select",
+          "source": "devices",
+          "required": false,
+          "label": { "en": "Inverter (empty: all of them)", "fr": "Onduleur (vide : tous)" }
+        }
+      ]
+    }
+  ],
+  "scene_triggers": [
+    {
+      "key": "production_started",
+      "label": { "en": "Solar production started", "fr": "Production solaire démarrée" },
+      "description": {
+        "en": "An inverter produces again (10 W or more for a minute): in the morning, or after a stop.",
+        "fr": "Un onduleur produit à nouveau (10 W ou plus pendant une minute) : le matin, ou après un arrêt."
+      },
+      "fields": [
+        {
+          "key": "inverter",
+          "type": "select",
+          "source": "devices",
+          "required": false,
+          "label": { "en": "Inverter (empty: any)", "fr": "Onduleur (vide : n'importe lequel)" }
+        }
+      ],
+      "variables": [
+        { "key": "name", "type": "string", "label": { "en": "Inverter", "fr": "Onduleur" } },
+        {
+          "key": "serial",
+          "type": "string",
+          "label": { "en": "Serial number", "fr": "Numéro de série" }
+        },
+        { "key": "power", "type": "number", "label": { "en": "Power (W)", "fr": "Puissance (W)" } },
+        {
+          "key": "energy_today",
+          "type": "number",
+          "label": { "en": "Energy today (kWh)", "fr": "Énergie du jour (kWh)" }
+        }
+      ]
+    },
+    {
+      "key": "production_stopped",
+      "label": { "en": "Solar production stopped", "fr": "Production solaire arrêtée" },
+      "description": {
+        "en": "An inverter stopped producing: 15 minutes under 5 W, or asleep (in the evening).",
+        "fr": "Un onduleur a cessé de produire : 15 minutes sous 5 W, ou en veille (le soir)."
+      },
+      "fields": [
+        {
+          "key": "inverter",
+          "type": "select",
+          "source": "devices",
+          "required": false,
+          "label": { "en": "Inverter (empty: any)", "fr": "Onduleur (vide : n'importe lequel)" }
+        }
+      ],
+      "variables": [
+        { "key": "name", "type": "string", "label": { "en": "Inverter", "fr": "Onduleur" } },
+        {
+          "key": "serial",
+          "type": "string",
+          "label": { "en": "Serial number", "fr": "Numéro de série" }
+        },
+        {
+          "key": "energy_today",
+          "type": "number",
+          "label": { "en": "Energy today (kWh)", "fr": "Énergie du jour (kWh)" }
+        }
+      ]
+    },
+    {
+      "key": "inverter_alarm",
+      "label": { "en": "Solar inverter alarm", "fr": "Alarme d'onduleur solaire" },
+      "description": {
+        "en": "An inverter raised an alarm: off grid, output fault or a DC (panel) short circuit.",
+        "fr": "Un onduleur a levé une alarme : hors réseau, défaut de sortie ou court-circuit DC (panneau)."
+      },
+      "fields": [
+        {
+          "key": "inverter",
+          "type": "select",
+          "source": "devices",
+          "required": false,
+          "label": { "en": "Inverter (empty: any)", "fr": "Onduleur (vide : n'importe lequel)" }
+        },
+        {
+          "key": "alarm",
+          "type": "select",
+          "required": false,
+          "label": { "en": "Alarm (empty: any)", "fr": "Alarme (vide : n'importe laquelle)" },
+          "options": [
+            { "value": "off_grid", "label": { "en": "Off grid", "fr": "Hors réseau" } },
+            {
+              "value": "output_fault",
+              "label": { "en": "Output fault", "fr": "Défaut de sortie" }
+            },
+            {
+              "value": "dc_short_circuit",
+              "label": { "en": "DC (panel) short circuit", "fr": "Court-circuit DC (panneau)" }
+            }
+          ]
+        }
+      ],
+      "variables": [
+        { "key": "alarm", "type": "string", "label": { "en": "Alarm", "fr": "Alarme" } },
+        {
+          "key": "input",
+          "type": "number",
+          "label": {
+            "en": "DC input (for a short circuit)",
+            "fr": "Entrée DC (pour un court-circuit)"
+          }
+        },
+        { "key": "name", "type": "string", "label": { "en": "Inverter", "fr": "Onduleur" } },
+        {
+          "key": "serial",
+          "type": "string",
+          "label": { "en": "Serial number", "fr": "Numéro de série" }
+        }
+      ]
+    }
+  ],
+  "scene_actions": [
+    {
+      "key": "set_power_limit",
+      "label": { "en": "Set the solar power limit", "fr": "Régler la limite de puissance solaire" },
+      "description": {
+        "en": "Caps the output of an inverter, in W, within its bounds (30 to 800 W on an EZ1-M). Not rewritten when the inverter already has it.",
+        "fr": "Plafonne la production d'un onduleur, en W, dans ses bornes (30 à 800 W sur un EZ1-M). Pas réécrite si l'onduleur l'a déjà."
+      },
+      "timeout_seconds": 30,
+      "fields": [
+        {
+          "key": "inverter",
+          "type": "select",
+          "source": "devices",
+          "required": true,
+          "label": { "en": "Inverter", "fr": "Onduleur" }
+        },
+        {
+          "key": "value",
+          "type": "number",
+          "required": true,
+          "label": { "en": "Power limit (W)", "fr": "Limite de puissance (W)" },
+          "min": 0,
+          "max": 5000
+        }
+      ],
+      "outputs": [
+        {
+          "key": "limit",
+          "type": "number",
+          "label": { "en": "Limit applied (W)", "fr": "Limite appliquée (W)" }
+        }
+      ]
+    },
+    {
+      "key": "get_production",
+      "label": { "en": "Read the solar production", "fr": "Lire la production solaire" },
+      "description": {
+        "en": "The production of one inverter or of all of them, for a message or a condition that follows.",
+        "fr": "La production d'un onduleur ou de tous, pour un message ou une condition qui suit."
+      },
+      "timeout_seconds": 30,
+      "fields": [
+        {
+          "key": "inverter",
+          "type": "select",
+          "source": "devices",
+          "required": false,
+          "label": { "en": "Inverter (empty: all of them)", "fr": "Onduleur (vide : tous)" }
+        }
+      ],
+      "outputs": [
+        { "key": "power", "type": "number", "label": { "en": "Power (W)", "fr": "Puissance (W)" } },
+        {
+          "key": "energy_today",
+          "type": "number",
+          "label": { "en": "Energy today (kWh)", "fr": "Énergie du jour (kWh)" }
+        },
+        {
+          "key": "energy_total",
+          "type": "number",
+          "label": { "en": "Lifetime energy (kWh)", "fr": "Énergie totale (kWh)" }
+        },
+        {
+          "key": "producing",
+          "type": "boolean",
+          "label": { "en": "Producing", "fr": "En production" }
+        },
+        {
+          "key": "sleeping",
+          "type": "boolean",
+          "label": { "en": "Sleeping (night)", "fr": "En veille (nuit)" }
+        },
+        {
+          "key": "inverters",
+          "type": "number",
+          "label": { "en": "Inverters counted", "fr": "Onduleurs comptés" }
+        }
+      ]
+    }
+  ]
+}

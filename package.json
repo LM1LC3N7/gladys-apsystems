@@ -1,0 +1,34 @@
+{
+  "name": "gladys-apsystems",
+  "version": "0.1.0",
+  "private": true,
+  "description": "APsystems EZ1 micro-inverters (balcony solar) for Gladys Assistant through their local API: live production per panel, daily and lifetime energy, power limit, on/off, alarms, scene triggers and a dashboard widget.",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "node --test",
+    "audit": "npm audit --omit=dev"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LM1LC3N7/gladys-apsystems.git"
+  },
+  "dependencies": {
+    "@gladysassistant/integration-sdk": "^0.15.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10"
+  },
+  "license": "Apache-2.0"
+}
