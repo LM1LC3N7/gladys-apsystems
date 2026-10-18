@@ -27,6 +27,8 @@ the notes of the version's GitHub Release.
   night was given every hour since the hold instead of the short dawn
   window, so a jump at dawn could be counted. The dawn window now applies,
   hold or not.
+- Store manifest: the French configuration description and the widget
+  descriptions are shortened to the store limits (1000 and 100 characters).
 
 ## [0.1.2] - 2026-10-18
 
