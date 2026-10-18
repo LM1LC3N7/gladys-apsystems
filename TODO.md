@@ -119,7 +119,11 @@
   at most every 15 minutes; when read back, a hold whose `from` is not the
   last value, or whose values are on the wrong side, is dropped, and its
   `firstAt` becomes the time of the load. The Gladys value is dated with
-  `last_value_changed` (else 24 hours back).
+  `last_value_changed` (else 24 hours back). While a value is held, the
+  margin counts from the last held reading (`held.at`, two intervals at
+  least), never from `last.at`: a reading below the hold that does not fit
+  becomes the hold itself, its kWh shown (fix after the youless/p1-monitor
+  review).
 - **Stale micro-inverters**: a created micro-inverter missing from the last
   valid inverter frame of its ECU, or seen more than 2 intervals ago, is
   published offline at 0 W and shown asleep (waiting if never seen).

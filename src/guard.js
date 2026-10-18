@@ -58,6 +58,7 @@ function validHeld(held, last, now) {
     threshold: held.threshold,
     first: held.first,
     firstAt: now,
+    at: now,
   };
 }
 
@@ -135,15 +136,21 @@ export class IndexGuard {
     }
     const up = this.held?.direction === 'up';
     if (up && value >= this.held.threshold) {
-      this.held = { ...this.held, to: value };
+      this.held = { ...this.held, to: value, at };
       return false;
     }
-    const hours = window ?? Math.max(minHours, Math.max(0, at - this.last.at) / HOUR);
+    // While a value is held, the margin is a SHORT one, counted from the
+    // last held reading (held.at), never from last.at: hours of silence
+    // behind an old reference must not let an intermediate value through.
+    const hours = this.held
+      ? Math.max(minHours, Math.max(0, at - this.held.at) / HOUR)
+      : (window ?? Math.max(minHours, Math.max(0, at - this.last.at) / HOUR));
     if (value > this.last.value && value - this.last.value <= maxKw * hours + slack) {
       return this.take(value, at);
     }
     const direction = value > this.last.value ? 'up' : 'down';
-    const same = this.held?.direction === direction;
+    // A jump below the one held becomes the hold itself, its kWh shown.
+    const same = this.held?.direction === direction && direction === 'down';
     this.held = {
       direction,
       from: this.last.value,
@@ -151,6 +158,7 @@ export class IndexGuard {
       threshold: direction === 'up' && up ? Math.min(value, this.held.threshold) : value,
       first: same ? this.held.first : value,
       firstAt: same ? this.held.firstAt : at,
+      at,
     };
     return false;
   }

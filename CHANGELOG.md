@@ -10,6 +10,15 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Fixed
+
+- Lifetime energy guard: while a value was held back, a reading below it
+  was checked against a margin counted from the last value published, which
+  after a long silence could let it through and count many kWh at once. The
+  margin now counts from the last held reading (two intervals at least),
+  and such a reading becomes the value held, its kWh shown: nothing is
+  counted without the user.
+
 ## [0.1.2] - 2026-10-18
 
 ### Added

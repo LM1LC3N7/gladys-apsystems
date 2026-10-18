@@ -417,6 +417,26 @@ test('the margin: two intervals at least, a day for a reference without a date',
   assert.equal(wrongSide.held, undefined);
 });
 
+test('while a value is held, an intermediate reading under it is held too: 0 kWh counted', () => {
+  const limits = { maxKw: 2, slack: 0.5, minHours: (2 * 300) / 3600 };
+  // The reference is old (a long silence): its margin by the clock would be 48 kWh.
+  const guard = new IndexGuard({ known: { value: 1000, at: NOON - 24 * HOUR }, now: NOON });
+  assert.equal(guard.accept(90_000, NOON, limits), false, 'a high jump: held');
+  // Five minutes later, 1040: under the jump, within 24 h x 2 kW of last.at,
+  // but not within a short margin from the hold.
+  assert.equal(guard.accept(1040, NOON + 5 * 60_000, limits), false);
+  assert.deepEqual(
+    [guard.held.direction, guard.held.from, guard.held.first, guard.last.value],
+    ['up', 1000, 1040, 1000],
+    'the intermediate value is the hold now, its 40 kWh shown',
+  );
+  assert.equal(guard.accept(1040.2, NOON + 10 * 60_000, limits), false, 'still held');
+  assert.equal(guard.last.value, 1000, 'nothing counted without the user');
+  // Accepted by the user: then taken.
+  guard.acceptHeld();
+  assert.equal(guard.accept(1040.3, NOON + 15 * 60_000, limits), true);
+});
+
 test('an acceptance is bounded: the value shown, plus what could be produced since', () => {
   const limits = { maxKw: 2, slack: 0.5, minHours: 0 };
   // A jump of +5 kWh in a minute, accepted, then a reading at 5000: held again.
