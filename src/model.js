@@ -166,3 +166,48 @@ export function indexStep(state, value) {
   }
   return { state: { value: state.value, lower }, publish: undefined };
 }
+
+const HOUR = 3_600_000;
+
+/**
+ * The lifetime index of an ECU, stricter than the EZ1's `indexStep` (the
+ * rules of the energy indexes the core bills: it skips a fall but counts
+ * every rise IN FULL). `state` is { value, at, drop, held, accept }: the last
+ * value published and when, the lower values read since, a jump held back.
+ * - never 0 (nor below): the ECU firmware sometimes answers 0 (the reference
+ *   filters it too);
+ * - a rise plausible since the last value published (at most `maxKw` on
+ *   average, plus ECU.INDEX_SLACK_KWH) goes through;
+ * - a bigger rise is held: NEVER confirmed by repetition nor by time (every
+ *   value at or above it stays held), taken only after an explicit gesture
+ *   of the user (a save of the configuration: `accept`);
+ * - a fall goes through once INDEX_CONFIRMATIONS readings in a row agree,
+ *   never decreasing (a counter reset is real; a single low reading is not).
+ * Resolves { state, publish }.
+ */
+export function ecuIndexStep(state, value, at, { maxKw, slack }) {
+  const s = state ?? {};
+  const take = () => ({ state: { value, at, drop: undefined, held: undefined }, publish: value });
+  if (!Number.isFinite(value) || value <= 0) {
+    return { state: { ...s, drop: undefined }, publish: undefined };
+  }
+  if (!Number.isFinite(s.value) || s.value <= 0) {
+    return take();
+  }
+  if (value >= s.value) {
+    const hours = Number.isFinite(s.at) ? Math.max(0, at - s.at) / HOUR : 0;
+    const plausible = value - s.value <= maxKw * hours + slack;
+    const aboveHeld = Number.isFinite(s.held) && value >= s.held;
+    if ((plausible && !aboveHeld) || (s.accept && Number.isFinite(s.held))) {
+      return take();
+    }
+    const held = Math.min(value, Number.isFinite(s.held) ? s.held : Infinity);
+    return { state: { ...s, drop: undefined, held }, publish: undefined };
+  }
+  const drop =
+    s.drop && value >= s.drop.value ? { value, count: s.drop.count + 1 } : { value, count: 1 };
+  if (drop.count >= INDEX_CONFIRMATIONS) {
+    return take();
+  }
+  return { state: { ...s, drop, held: undefined, accept: false }, publish: undefined };
+}

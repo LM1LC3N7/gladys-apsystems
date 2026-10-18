@@ -70,6 +70,37 @@ test('the configuration matches the code', () => {
   assert.equal(fields.poll_interval.default, DEFAULTS.poll_interval);
   assert.equal(fields.poll_interval.min, BOUNDS.poll_interval.min);
   assert.equal(fields.poll_interval.max, BOUNDS.poll_interval.max);
+  // The ECU fields: optional, nothing changes for a user with EZ1s only.
+  assert.equal(fields.ecu_hosts.required, false);
+  assert.equal(fields.ecu_hosts.default, undefined);
+  assert.equal(DEFAULTS.ecu_hosts, '');
+  assert.equal(fields.ecu_poll_interval.default, DEFAULTS.ecu_poll_interval);
+  assert.equal(fields.ecu_poll_interval.min, BOUNDS.ecu_poll_interval.min);
+  assert.equal(fields.ecu_poll_interval.max, BOUNDS.ecu_poll_interval.max);
+  assert.ok(BOUNDS.ecu_poll_interval.min >= 300, 'an ECU is never read more than every 5 minutes');
+  assert.deepEqual(
+    manifest.config_schema.map((f) => f.key),
+    ['intro', 'hosts', 'poll_interval', 'ecu_hosts', 'ecu_poll_interval'],
+  );
+});
+
+test('no mojibake and no BOM in the files users and the store read', () => {
+  const files = [
+    'gladys-assistant-integration.json',
+    'docs/en.md',
+    'docs/fr.md',
+    'README.md',
+    'CHANGELOG.md',
+    'TODO.md',
+    'CLAUDE.md',
+    'THIRD_PARTY_NOTICES.md',
+    'src/i18n.js',
+  ];
+  for (const file of files) {
+    const text = read(file);
+    assert.ok(!text.startsWith('﻿'), `${file} starts with a BOM`);
+    assert.doesNotMatch(text, /Ã|Â|â€/, `${file} holds mojibake`);
+  }
 });
 
 test('the keys of the manifest are the keys of the code', () => {

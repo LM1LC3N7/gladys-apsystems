@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// Constants of the APsystems EZ1 integration.
+// Constants of the APsystems integration (EZ1 local API, ECU gateways).
 // -----------------------------------------------------------------------------
 
 /** The EZ1 local API listens on this port once "Local mode" is on. */
@@ -57,6 +57,38 @@ export const PRODUCTION = {
 
 /** The documented bounds of the EZ1-M, used until the inverter says its own. */
 export const DEFAULT_LIMITS = { min: 30, max: 800 };
+
+/**
+ * The APsystems ECU gateways (ECU-B, ECU-R, ECU-C), TCP port 8899. The ECU
+ * is known to hang when it is queried too often: the reference
+ * (HAEdwin/homeassistant-apsystems_ecu_reader) recommends 300 s and queries
+ * one ECU at a time; ksheumaker's original waited 5 s around each query.
+ * Here: a reading every `ecu_poll_interval` (300 s by default and at least),
+ * one connection at a time for all the ECUs, PAUSE between two queries, and
+ * after a failure a wait that doubles (never shorter than the interval).
+ */
+export const ECU = {
+  PORT: 8899,
+  /** At most this many ECUs in the `ecu_hosts` field. */
+  MAX: 10,
+  /** One query: connect, ask, whole answer (the reference waits 5 to 10 s). */
+  TIMEOUT: 10_000,
+  /** Between two queries, whichever the ECU. */
+  PAUSE: 5_000,
+  /** Connection attempts per query (the reference's port_retries). */
+  CONNECT_ATTEMPTS: 2,
+  /** The longest wait after failures (or the interval, if longer). */
+  BACKOFF_MAX: 30 * 60_000,
+  /** Failed readings in a row before the ECU is reported (red status). */
+  MISSES_BEFORE_UNREACHABLE: 3,
+  /**
+   * The lifetime index may rise by at most this much power per inverter the
+   * ECU knows (kW) over the time since the last published value, plus
+   * INDEX_SLACK_KWH; a bigger jump is held (see `ecuIndexStep`).
+   */
+  INDEX_KW_PER_INVERTER: 2,
+  INDEX_SLACK_KWH: 0.5,
+};
 
 /** Alarm ids (forever: values of the `alarm` field of inverter_alarm). */
 export const ALARMS = {

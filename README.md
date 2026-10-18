@@ -3,8 +3,11 @@
 [Gladys Assistant](https://gladysassistant.com) external integration for
 **APsystems EZ1 micro-inverters** (balcony solar) through their local API:
 live production per panel, daily and lifetime energy, power limit, on/off,
-alarms, scene triggers, scene actions and a dashboard widget. **Unofficial,
-not affiliated with APsystems.**
+alarms, scene triggers, scene actions and a dashboard widget. Also the
+**APsystems ECU gateways** (ECU-B, ECU-R, ECU-C) and the micro-inverters
+behind them (DS3, QS1, YC600, YC1000…), read-only, through the ECU's local
+TCP port 8899 (never tested with a real ECU). **Unofficial, not affiliated
+with APsystems.**
 
 User documentation: [docs/en.md](docs/en.md) · [docs/fr.md](docs/fr.md).
 
@@ -17,8 +20,18 @@ Gladys ⇄ SDK ⇄ src/app.js (ApsystemsApp)
                  ├─ src/model.js      EZ1 JSON -> inputs, limit, alarms; day and index counters (pure)
                  ├─ src/devices.js    the inverter device, feature keys, states (pure)
                  ├─ src/triggers.js   readings -> scene events (pure)
-                 └─ src/widget.js     the "solar" widget (pure)
+                 ├─ src/widget.js     the "solar" widget (pure)
+                 └─ src/gateways.js   the ECU gateways: pace, devices, states
+                      ├─ src/ecu.js           TCP 8899, one connection at a time, pauses
+                      └─ src/ecu-protocol.js  ECU frames, bounded and checked (pure)
 ```
+
+- **ECU gateways**: every `ecu_poll_interval` (300 s at least), an ECU
+  query then an inverter query, each on its own connection, through one
+  queue for all the ECUs with a 5 s pause; longer waits after a failure.
+  Protocol ported from HAEdwin/homeassistant-apsystems_ecu_reader 2.15.0
+  and ksheumaker/homeassistant-apsystems_ecur (Apache-2.0, see
+  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
 
 - **Identification**: each address typed in the configuration is asked
   `getDeviceInfo` (serial, firmware, power bounds), then what its firmware
@@ -62,4 +75,5 @@ the multi-arch image to GHCR and publishes the GitHub Release.
 
 ## License
 
-Apache-2.0.
+Apache-2.0. The ECU protocol code is ported from two Apache-2.0 projects:
+see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

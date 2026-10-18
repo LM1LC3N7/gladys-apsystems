@@ -47,7 +47,12 @@ src/widget.js       the "solar" widget (pure)
 src/config.js       config_schema normalized, the `hosts` grammar
 src/constants.js    port, pacing, thresholds, manifest keys
 src/i18n.js         runtime texts (en/fr)
-src/http.js         the only network access (GET on the LAN, timeout, Ez1Error)
+src/http.js         the only HTTP access (GET on the LAN, timeout, Ez1Error)
+src/gateways.js     the ECU gateways: pace (kept across restarts of the app),
+                    ECU and micro-inverter devices, states, status, scenes
+src/ecu.js          the only TCP access (port 8899): one connection per
+                    query, one at a time for all ECUs, pauses (EcuQueue)
+src/ecu-protocol.js ECU frames -> objects, bounded and checked (pure)
 test/fixtures/      EZ1 answers shaped after the manual and user reports
 test/helpers/       fake EZ1 inverters (fetch, firmware variants, sleep),
                     fake timers; Gladys is the SDK's fake
@@ -82,6 +87,21 @@ test/helpers/       fake EZ1 inverters (fetch, firmware variants, sleep),
 - Firmware 1.9.0 users reported a lifetime counter that went down: hence
   `indexStep`.
 
+## What is known of the ECU local protocol
+
+- **Source**: HAEdwin/homeassistant-apsystems_ecu_reader 2.15.0
+  (`ecu_api.py`, `ecu_helpers.py`, `const.py`) and its source
+  ksheumaker/homeassistant-apsystems_ecur, both Apache-2.0 (credited in
+  `THIRD_PARTY_NOTICES.md`). No ECU was available: every offset is the
+  reference's, kept in `src/ecu-protocol.js` only.
+- TCP 8899, one query per connection: `APS1100160001END\n` (the ECU), then
+  `APS1100280002<ECU id>END\n` (the inverters). Answer frame: `APS11`, 4
+  ASCII digits = length - 1, the command, the payload, `END` + one byte.
+- The ECU hangs when asked too often: 300 s at least, one connection at a
+  time, pauses, longer waits after failures (see `ECU` in
+  `src/constants.js`). Never add a query without weighing that.
+- Read-only in v1 (see TODO.md "Decisions").
+
 ## Rules
 
 - **Unofficial.** Every user-facing surface says "unofficial connector, not
@@ -92,7 +112,9 @@ test/helpers/       fake EZ1 inverters (fetch, firmware variants, sleep),
   `energy_total_production`, `limit`, `switch`, `reachable`, `alarm_<id>`),
   the external id shape `inverter:<deviceId>` and the feature ids derived
   from them (`uuidOf`) are stored in user scenes and dashboards, and shared
-  with `gladys-hoymiles`. Never rename them.
+  with `gladys-hoymiles`. Never rename them. Same for the ECU: the config
+  keys `ecu_hosts` / `ecu_poll_interval`, the external ids `ecu:<ECU id>`
+  and `ecu_inverter:<inverter id>`, the keys of `ECU_FEATURE`.
 - **The scene vocabulary is gladys-hoymiles'**: the device select is named
   `inverter` everywhere (the trigger fields, the `set_power_limit` and
   `get_production` fields, the widget setting) and the events carry the
@@ -164,7 +186,7 @@ test/helpers/       fake EZ1 inverters (fetch, firmware variants, sleep),
   against the events the code fires).
 - **User-facing text** is bilingual, `docs/en.md` and `docs/fr.md` kept in
   sync. Comments explain why, in English.
-- **Tests never touch the network** (`installInverters` replaces `fetch`);
+- **Tests never touch the network** (`installInverters` replaces `fetch`, `installEcus` the ECU transport);
   the widget contents pass the SDK's `validateWidgetContent`.
 
 ## CI and pushes

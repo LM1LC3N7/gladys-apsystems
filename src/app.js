@@ -2,7 +2,8 @@
 // The integration itself: identifying the inverters typed in the
 // configuration, the reading loop over the inverters the user created, the
 // night, the commands (power limit, on/off), the scene triggers and actions,
-// the widget. index.js only wires the SDK handlers to it.
+// the widget. index.js only wires the SDK handlers to it. The ECU gateways
+// (src/gateways.js) run beside the EZ1, at their own pace, from the same loop.
 //
 // Pace (see CLAUDE.md): every `poll_interval` seconds the output data of
 // each created inverter; its alarms and on/off status every 5 minutes; its
@@ -29,11 +30,16 @@ import {
   ids,
   inverterStates,
   isSerial,
+  keepCreatedFeatures,
   lastValueOf,
   paramsOf,
+  parseEcuExternalId,
+  parseEcuInverterExternalId,
   parseExternalId,
 } from './devices.js';
+import { EcuQueue } from './ecu.js';
 import { Ez1Client, LIMIT_VARIANTS } from './ez1.js';
+import { EcuGateways } from './gateways.js';
 import { Ez1Error } from './http.js';
 import { T } from './i18n.js';
 import {
@@ -66,12 +72,21 @@ export class ApsystemsApp {
     now = Date.now,
     timers = defaultTimers,
     clientFactory = (options) => new Ez1Client(options),
+    ecuQueue,
+    ecuClientFactory,
   }) {
     this.gladys = gladys;
     this.logger = logger;
     this.now = now;
     this.timers = timers;
     this.clientFactory = clientFactory;
+    /** The ECU gateways (src/gateways.js); their pacing survives a restart of the app. */
+    this.gateways = new EcuGateways(this, {
+      queue:
+        ecuQueue ??
+        new EcuQueue({ sleep: (ms) => new Promise((resolve) => timers.setTimeout(resolve, ms)) }),
+      ...(ecuClientFactory ? { clientFactory: ecuClientFactory } : {}),
+    });
     this.config = normalizeConfig();
     /** "ip:port" -> Ez1Client (one queue per inverter). */
     this.clients = new Map();
@@ -96,10 +111,20 @@ export class ApsystemsApp {
     this.inverters.clear();
     this.hosts = new Map(this.config.hosts.map((h) => [h.key, { serial: undefined, probedAt: 0 }]));
     this.startedAt = this.now();
+    // The core keeps the connection status in memory: send it again at every start.
+    this.lastStatus = undefined;
+    this.gateways.configure(this.config);
     if (this.config.invalidHosts.length > 0) {
       this.logger.warn(`Ignored entries of the address list: ${this.config.invalidHosts}`);
     }
-    if (this.config.hosts.length === 0 && this.createdDevices().length === 0) {
+    if (this.config.invalidEcuHosts.length > 0) {
+      this.logger.warn(`Ignored entries of the ECU address list: ${this.config.invalidEcuHosts}`);
+    }
+    if (
+      this.config.hosts.length === 0 &&
+      this.createdDevices().length === 0 &&
+      !this.gateways.any()
+    ) {
       await this.updateStatus();
       return;
     }
@@ -116,6 +141,12 @@ export class ApsystemsApp {
       () => this.refresh().catch((err) => this.logger.warn(`Refresh: ${err.message}`)),
       this.config.pollInterval * 1000,
     );
+  }
+
+  /** The user saved the configuration: that save accepts an ECU index jump held back. */
+  configUpdated(raw) {
+    this.gateways.acceptHeldJumps();
+    return this.start(raw);
   }
 
   stop() {
@@ -135,32 +166,40 @@ export class ApsystemsApp {
       .catch((err) => this.logger.warn(`setConnectionStatus failed: ${err.message}`));
   }
 
-  /** Red only for a real problem: an inverter that vanished in daylight. */
-  async updateStatus() {
+  /** The EZ1 part of the connection status, or undefined without any EZ1. */
+  ez1StatusPart() {
     const created = this.createdInverters();
-    let connected = true;
-    let message;
     if (this.config.hosts.length === 0 && created.length === 0) {
-      connected = false;
-      message = T.noHost;
-    } else if (created.length === 0) {
-      const found = [...this.hosts.values()].filter((h) => h.serial).length;
-      message = found > 0 ? T.notCreated(found) : T.nobodyAnswers;
-    } else {
-      const unreachable = created.filter((i) => i.status === 'unreachable');
-      if (unreachable.length > 0) {
-        connected = false;
-        message = T.unreachable(unreachable.map((i) => i.device.name));
-      } else {
-        message = T.ok({
-          total: created.length,
-          producing: created.filter((i) => i.status === 'producing').length,
-          asleep: created.filter((i) => i.status === 'asleep').length,
-        });
-      }
+      return undefined;
     }
+    if (created.length === 0) {
+      const found = [...this.hosts.values()].filter((h) => h.serial).length;
+      return { connected: true, message: found > 0 ? T.notCreated(found) : T.nobodyAnswers };
+    }
+    const unreachable = created.filter((i) => i.status === 'unreachable');
+    if (unreachable.length > 0) {
+      return { connected: false, message: T.unreachable(unreachable.map((i) => i.device.name)) };
+    }
+    return {
+      connected: true,
+      message: T.ok({
+        total: created.length,
+        producing: created.filter((i) => i.status === 'producing').length,
+        asleep: created.filter((i) => i.status === 'asleep').length,
+      }),
+    };
+  }
+
+  /** Red only for a real problem: an inverter that vanished in daylight, an ECU that hangs. */
+  async updateStatus() {
+    const parts = [this.ez1StatusPart(), this.gateways.statusPart()].filter(Boolean);
+    const connected = parts.length > 0 && parts.every((p) => p.connected);
+    let message = parts.length > 0 ? joinTexts(...parts.map((p) => p.message)) : T.noHost;
     if (this.config.invalidHosts.length > 0) {
       message = joinTexts(message, T.invalidHosts(this.config.invalidHosts));
+    }
+    if (this.config.invalidEcuHosts.length > 0) {
+      message = joinTexts(message, T.invalidEcuHosts(this.config.invalidEcuHosts));
     }
     await this.setStatus(connected, message);
   }
@@ -312,7 +351,7 @@ export class ApsystemsApp {
     const due = [...this.hosts].filter(
       ([, host]) => force || (!host.serial && now - host.probedAt >= PACING.PROBE),
     );
-    if (due.length === 0) {
+    if (due.length === 0 && !force) {
       return;
     }
     let changed = false;
@@ -333,9 +372,14 @@ export class ApsystemsApp {
     }
   }
 
-  /** Discovery lists every inverter that answered at a configured address. */
+  /**
+   * Discovery lists every inverter that answered at a configured address,
+   * every ECU and the micro-inverters behind it; a device the user created
+   * keeps every feature it has.
+   */
   async publishDevices() {
-    const devices = [...this.inverters.values()]
+    const created = new Map((this.gladys.devices ?? []).map((d) => [d.external_id, d]));
+    const ez1 = [...this.inverters.values()]
       .filter((i) => i.identified)
       .map((i) =>
         buildInverterDevice(this.gladys, {
@@ -351,6 +395,10 @@ export class ApsystemsApp {
           limitVariant: i.limitVariant ?? 'none',
         }),
       );
+    const devices = [...ez1, ...this.gateways.devices()].map((d) =>
+      keepCreatedFeatures(d, created.get(d.external_id)),
+    );
+    this.gateways.publishedSignature = this.gateways.signature();
     await this.gladys.publishDiscoveredDevices(devices);
   }
 
@@ -371,15 +419,25 @@ export class ApsystemsApp {
   }
 
   async doRefresh() {
-    await this.probeHosts();
-    // Different inverters in parallel: each one has its own queue.
-    await Promise.all(this.createdInverters().map((inverter) => this.refreshInverter(inverter)));
+    await Promise.all([
+      (async () => {
+        await this.probeHosts();
+        // Different inverters in parallel: each one has its own queue.
+        await Promise.all(this.createdInverters().map((i) => this.refreshInverter(i)));
+      })(),
+      // The ECUs at their own pace (they skip the ticks before they are due).
+      this.gateways.refresh(),
+    ]);
     await this.updateStatus();
     this.gladys.requestWidgetRefresh(WIDGETS.SOLAR);
   }
 
-  /** A device was just created (or updated): read it now. */
+  /** A device was just created (or updated): read it now (an ECU: its last reading). */
   async deviceCreated(device) {
+    if (await this.gateways.deviceCreated(device)) {
+      await this.updateStatus();
+      return;
+    }
     const parsed = parseExternalId(device.external_id);
     if (!parsed) {
       return;
@@ -607,7 +665,17 @@ export class ApsystemsApp {
     return new Error(`${inverter.device.name}: ${err.message}`);
   }
 
+  /** The devices of the ECU gateways: read-only in this version. */
+  static isGatewayDevice(externalId) {
+    return Boolean(parseEcuExternalId(externalId) || parseEcuInverterExternalId(externalId));
+  }
+
   async setValue(device, feature, value) {
+    if (ApsystemsApp.isGatewayDevice(device.external_id)) {
+      throw new Error(
+        `${featureKey(feature.external_id)} is read-only (ECU devices are read-only)`,
+      );
+    }
     const inverter = this.createdInverter(device.external_id);
     const key = featureKey(feature.external_id);
     if (key === FEATURE.LIMIT) {
@@ -676,6 +744,9 @@ export class ApsystemsApp {
   // --- Scene actions -----------------------------------------------------------------
 
   async setPowerLimit(fields = {}) {
+    if (ApsystemsApp.isGatewayDevice(fields.inverter)) {
+      throw new Error('The power limit is not available through an ECU gateway (read-only).');
+    }
     const inverter = this.createdInverter(fields.inverter);
     const limit = await this.applyLimit(inverter, fields.value);
     return { limit };
@@ -687,10 +758,15 @@ export class ApsystemsApp {
    * tried since the start is read first. No event: no scene loop.
    */
   async getProduction(fields = {}) {
-    const inverters = fields.inverter
-      ? [this.createdInverter(fields.inverter)]
-      : this.createdInverters();
-    if (inverters.length === 0) {
+    // An ECU (or a micro-inverter behind one): its last reading, never an extra query.
+    const gateways = this.gateways.production(fields.inverter || undefined) ?? [];
+    let inverters = [];
+    if (!fields.inverter) {
+      inverters = this.createdInverters();
+    } else if (!ApsystemsApp.isGatewayDevice(fields.inverter)) {
+      inverters = [this.createdInverter(fields.inverter)];
+    }
+    if (inverters.length + gateways.length === 0) {
       throw new Error('No APsystems inverter device yet: add one in Discovery.');
     }
     await Promise.all(
@@ -700,27 +776,37 @@ export class ApsystemsApp {
     );
     const sum = (values, digits) =>
       Number(values.reduce((total, value) => total + (value ?? 0), 0).toFixed(digits));
-    const totals = inverters.map((i) => i.index?.value);
+    const rows = [
+      ...inverters.map((i) => ({
+        power: AWAKE.has(i.status) ? i.output?.power : 0,
+        energyToday: i.day?.value ?? lastValueOf(i.device, FEATURE.ENERGY_TODAY),
+        energyTotal: i.index?.value,
+        status: i.status,
+      })),
+      ...gateways,
+    ];
+    const totals = rows.map((r) => r.energyTotal);
     return {
       power: sum(
-        inverters.map((i) => (AWAKE.has(i.status) ? i.output?.power : 0)),
+        rows.map((r) => r.power),
         1,
       ),
       energy_today: sum(
-        inverters.map((i) => i.day?.value ?? lastValueOf(i.device, FEATURE.ENERGY_TODAY)),
+        rows.map((r) => r.energyToday),
         3,
       ),
       energy_total: totals.every((t) => t !== undefined && t !== null) ? sum(totals, 3) : null,
-      producing: inverters.some((i) => i.status === 'producing'),
-      sleeping: inverters.every((i) => i.status === 'asleep'),
-      inverters: inverters.length,
+      producing: rows.some((r) => r.status === 'producing'),
+      sleeping: rows.every((r) => r.status === 'asleep'),
+      inverters: rows.length,
     };
   }
 
   // --- Widget ------------------------------------------------------------------------
 
   async getWidget(key, { settings = {}, language } = {}) {
-    const inverters = this.createdInverters().map((i) => ({
+    const ez1 = this.createdInverters().map((i) => ({
+      kind: 'ez1',
       name: i.device.name,
       deviceId: i.device.external_id,
       status: i.status,
@@ -733,16 +819,21 @@ export class ApsystemsApp {
       limit: i.limitSupported === false ? null : (i.limit ?? null),
       alarms: i.alarms,
     }));
+    const inverters = [...ez1, ...this.gateways.widgetEntries()];
     return solarWidget({ inverters, deviceId: settings.inverter, language: language ?? 'en' });
   }
 
   // --- Configuration screen button -----------------------------------------------------
 
   async testConnection() {
-    if (this.config.hosts.length === 0) {
-      return this.config.invalidHosts.length > 0
-        ? joinTexts(T.noHost, T.invalidHosts(this.config.invalidHosts))
-        : T.noHost;
+    const invalid = [
+      ...(this.config.invalidHosts.length > 0 ? [T.invalidHosts(this.config.invalidHosts)] : []),
+      ...(this.config.invalidEcuHosts.length > 0
+        ? [T.invalidEcuHosts(this.config.invalidEcuHosts)]
+        : []),
+    ];
+    if (this.config.hosts.length === 0 && this.config.ecuHosts.length === 0) {
+      return invalid.length > 0 ? joinTexts(T.noHost, ...invalid) : T.noHost;
     }
     const lines = await Promise.all(
       this.config.hosts.map(async ({ key }) => {
@@ -757,9 +848,7 @@ export class ApsystemsApp {
         }
       }),
     );
-    if (this.config.invalidHosts.length > 0) {
-      lines.push(T.invalidHosts(this.config.invalidHosts));
-    }
+    lines.push(...(await this.gateways.testLines()), ...invalid);
     return { en: lines.map((l) => l.en).join('\n'), fr: lines.map((l) => l.fr).join('\n') };
   }
 }

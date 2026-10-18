@@ -23,6 +23,8 @@ RUN npm ci --omit=dev || npm install --omit=dev
 COPY index.js ./
 COPY src ./src
 COPY gladys-assistant-integration.json ./
+# The license, and the notices of the Apache-2.0 code ported for the ECU.
+COPY LICENSE THIRD_PARTY_NOTICES.md ./
 
 # The only writable location allowed at runtime.
 ENV NODE_ENV=production

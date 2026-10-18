@@ -16,8 +16,31 @@ export const STATUS = {
 
 export const T = {
   noHost: {
-    en: 'No inverter yet: type the IP address of each EZ1 (local mode on, port 8050) in the configuration.',
-    fr: 'Aucun onduleur : saisissez l’adresse IP de chaque EZ1 (mode local activé, port 8050) dans la configuration.',
+    en: 'No inverter yet: type the IP address of each EZ1 (local mode on, port 8050), or of your ECU gateway (port 8899), in the configuration.',
+    fr: 'Aucun onduleur : saisissez l’adresse IP de chaque EZ1 (mode local activé, port 8050), ou de votre passerelle ECU (port 8899), dans la configuration.',
+  },
+  invalidEcuHosts: (positions) => ({
+    en: `${positions.length === 1 ? 'Entry' : 'Entries'} ${positions.join(', ')} of the ECU address list ${positions.length === 1 ? 'is' : 'are'} not valid: ignored.`,
+    fr: `${positions.length === 1 ? 'L’entrée' : 'Les entrées'} ${positions.join(', ')} de la liste d’adresses ECU ${positions.length === 1 ? 'n’est pas valide : ignorée' : 'ne sont pas valides : ignorées'}.`,
+  }),
+  ecu: {
+    waiting: {
+      en: 'ECU gateway: waiting for its first answer.',
+      fr: 'Passerelle ECU : en attente de sa première réponse.',
+    },
+    notCreated: (found) => ({
+      en: `${found} ECU ${plural(found, 'gateway answers', 'gateways answer')}: open Discovery and add ${plural(found, 'it', 'them')} and ${plural(found, 'its', 'their')} inverters.`,
+      fr: `${found} passerelle${plural(found, ' ECU répond', 's ECU répondent')} : ouvrez Découverte et ajoutez-${plural(found, 'la', 'les')} avec ${plural(found, 'ses', 'leurs')} onduleurs.`,
+    }),
+    // No live figure: the status only changes on a transition.
+    ok: ({ total, producing, asleep }) => ({
+      en: `${total} ECU ${plural(total, 'gateway', 'gateways')}: ${producing} producing${asleep > 0 ? `, ${asleep} with every inverter asleep (night, normal)` : ''}.`,
+      fr: `${total} passerelle${plural(total, '', 's')} ECU : ${producing} en production${asleep > 0 ? `, ${asleep} avec tous ses onduleurs en veille (nuit, normal)` : ''}.`,
+    }),
+    unreachable: (names) => ({
+      en: `ECU not answering: ${names.join(', ')}. Check its address, that it is on the network (Wi-Fi or cable) and accepts local access on port 8899; an ECU that hangs comes back after unplugging it for a minute.`,
+      fr: `ECU qui ne répond pas : ${names.join(', ')}. Vérifiez son adresse, qu’il est sur le réseau (Wi-Fi ou câble) et accepte l’accès local sur le port 8899 ; un ECU bloqué repart après l’avoir débranché une minute.`,
+    }),
   },
   invalidHosts: (positions) =>
     positions.length === 1
@@ -60,6 +83,14 @@ export const T = {
       en: `${key}: ${message}.`,
       fr: `${key} : ${message}.`,
     }),
+    ecuAnswers: (key, ecu) => ({
+      en: `${key}: ${ecu.model} ${ecu.id} (firmware ${ecu.firmware ?? '?'}), ${ecu.online ?? '?'} of ${ecu.inverters ?? '?'} inverters online, ${ecu.power ?? 0} W now.`,
+      fr: `${key} : ${ecu.model} ${ecu.id} (firmware ${ecu.firmware ?? '?'}), ${ecu.online ?? '?'} onduleur(s) en ligne sur ${ecu.inverters ?? '?'}, ${ecu.power ?? 0} W en ce moment.`,
+    }),
+    ecuFailed: (key, message) => ({
+      en: `${key}: the ECU does not answer (${message}). Check its address and that it is on the network; the ECU is never read more often than its interval (5 minutes by default).`,
+      fr: `${key} : l’ECU ne répond pas (${message}). Vérifiez son adresse et qu’il est sur le réseau ; l’ECU n’est jamais lu plus souvent que son intervalle (5 minutes par défaut).`,
+    }),
   },
   widget: {
     title: { en: 'Solar production', fr: 'Production solaire' },
@@ -74,6 +105,8 @@ export const T = {
     input: (n) => ({ en: `Panel ${n}`, fr: `Panneau ${n}` }),
     limit: { en: 'Power limit', fr: 'Limite de puissance' },
     state: { en: 'State', fr: 'État' },
+    online: { en: 'Inverters online', fr: 'Onduleurs en ligne' },
+    temperature: { en: 'Temperature', fr: 'Température' },
     alarm: { en: 'Alarm', fr: 'Alarme' },
     alarms: {
       off_grid: { en: 'Off grid', fr: 'Hors réseau' },

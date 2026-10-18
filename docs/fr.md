@@ -1,19 +1,25 @@
-# APsystems EZ1
+# APsystems EZ1 & ECU
 
 **Connecteur non officiel, sans lien avec APsystems.** Il lit vos
 micro-onduleurs APsystems EZ1 (solaire de balcon : EZ1-M, et les autres
 modèles EZ1 qui offrent l'API locale) sur votre réseau local, via l'API
-locale que l'onduleur ouvre lui-même : ni cloud ni compte, rien ne sort de
-chez vous. APsystems est une marque d'Altenergy Power System Inc.
+locale que l'onduleur ouvre lui-même, ainsi que les micro-onduleurs
+derrière une **passerelle ECU** (ECU-B, ECU-R, ECU-C : DS3, DS3-L, QS1,
+YC600, YC1000, QT2…) via le port local 8899 de l'ECU (voir
+[Passerelles ECU](#passerelles-ecu-ecu-b-ecu-r-ecu-c)) : ni cloud ni compte,
+rien ne sort de chez vous. APsystems est une marque d'Altenergy Power
+System Inc.
 
 ## Ce que vous obtenez
 
-| Surface                  | Contenu                                                                                                                                                                                                                                                                                               |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Un appareil par onduleur | **puissance produite** (W, totale et par panneau), **énergie du jour** (kWh), **énergie totale** (kWh, un index de production pour le suivi énergétique de Gladys, avec sa production par tranche de 30 minutes), **limite de puissance** (W, réglable), **marche/arrêt**, **joignable**, **alarmes** |
-| Déclencheurs de scène    | **production solaire démarrée** (le matin), **production solaire arrêtée** (le soir), **alarme d'onduleur solaire** (hors réseau, défaut de sortie, court-circuit DC sur un panneau)                                                                                                                  |
-| Actions de scène         | **régler la limite de puissance solaire** d'un onduleur, **lire la production solaire** (puissance, énergie du jour et totale, d'un onduleur ou de tous)                                                                                                                                              |
-| Widget                   | **Production solaire** : puissance actuelle, énergie du jour et totale, par panneau, la limite et l'état d'un onduleur, ou le total de tous                                                                                                                                                           |
+| Surface                                        | Contenu                                                                                                                                                                                                                                                                                               |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Un appareil par onduleur                       | **puissance produite** (W, totale et par panneau), **énergie du jour** (kWh), **énergie totale** (kWh, un index de production pour le suivi énergétique de Gladys, avec sa production par tranche de 30 minutes), **limite de puissance** (W, réglable), **marche/arrêt**, **joignable**, **alarmes** |
+| Déclencheurs de scène                          | **production solaire démarrée** (le matin), **production solaire arrêtée** (le soir), **alarme d'onduleur solaire** (hors réseau, défaut de sortie, court-circuit DC sur un panneau)                                                                                                                  |
+| Actions de scène                               | **régler la limite de puissance solaire** d'un onduleur, **lire la production solaire** (puissance, énergie du jour et totale, d'un onduleur ou de tous)                                                                                                                                              |
+| Widget                                         | **Production solaire** : puissance actuelle, énergie du jour et totale, par panneau, la limite et l'état d'un onduleur, ou le total de tous                                                                                                                                                           |
+| Un appareil par ECU                            | **puissance produite** (W), **énergie du jour** (kWh), **énergie totale** (kWh, index de production), **onduleurs en ligne**, **joignable** ; lecture seule                                                                                                                                           |
+| Un appareil par micro-onduleur derrière un ECU | **en ligne**, **puissance produite** (W, totale et par panneau), **tension AC** (V, par phase sur un modèle triphasé), **fréquence du réseau** (Hz), **température** (°C) ; lecture seule                                                                                                             |
 
 ## Installation
 
@@ -80,6 +86,78 @@ qu'elle ne soit jamais comptée deux fois comme production.
   finissent par `_b`, pour les systèmes avec batterie) n'ont pas de
   marche/arrêt : la fonctionnalité n'est alors pas proposée.
 
+## Passerelles ECU (ECU-B, ECU-R, ECU-C)
+
+**Jamais testé avec un vrai ECU.** Cette partie a été écrite d'après
+l'intégration Home Assistant de HAEdwin (APsystems ECU Reader 2.15.0) et sa
+source de ksheumaker, toutes deux sous Apache-2.0 (voir
+`THIRD_PARTY_NOTICES.md`), sans ECU sous la main. Si vous en avez un, vos
+retours sur le forum sont les bienvenus.
+
+Les micro-onduleurs comme les DS3, DS3-L, QS1, YC600 ou YC1000 parlent à
+une passerelle **ECU** en Zigbee ; l'ECU envoie ses données au cloud EMA et
+répond sur votre réseau local, sur le **port TCP 8899**. L'intégration
+l'interroge là : rien ne passe par EMA.
+
+1. **Mettez l'ECU sur votre réseau local, avec l'accès local.** L'ECU-B et
+   l'ECU-R de la série 2160 se raccordent **en Wi-Fi uniquement** ;
+   l'ECU-R « Pro » (série 2162, son identifiant commence par 2162) et
+   l'ECU-C se raccordent **en Wi-Fi ou en Ethernet** (câble). En Wi-Fi :
+   installez **EMA Manager**, maintenez le bouton de l'ECU jusqu'à ce que
+   son propre Wi-Fi démarre, rejoignez ce Wi-Fi (mot de passe par défaut
+   `88888888`), lancez EMA Manager et choisissez la connexion **Locale**,
+   puis reliez l'ECU au Wi-Fi de la maison (le même réseau que Gladys). Le
+   port 8899 répond alors sur votre réseau.
+2. Dans votre box, donnez à l'ECU une **adresse fixe** (réservation DHCP).
+3. Dans Gladys, saisissez-la dans **Adresses des passerelles ECU**
+   (`192.168.1.60` ; port 8899, ajoutez `:port` seulement si le vôtre est
+   différent). Plusieurs ECU : séparez-les par des virgules.
+4. Enregistrez, cliquez sur **Tester les onduleurs**, puis ouvrez
+   **Découverte** : un appareil pour l'ECU et un par micro-onduleur qu'il
+   connaît (leur identifiant est celui de l'onduleur lui-même : ils restent
+   les mêmes si l'ECU est remplacé).
+
+**Le rythme.** Un ECU est connu pour se bloquer si on l'interroge trop
+souvent. Il est lu à chaque **intervalle de lecture des ECU** (300 s par
+défaut, et jamais moins : le rythme que recommande l'intégration Home
+Assistant), une seule connexion à la fois pour tous vos ECU, avec une pause
+de 5 secondes entre deux requêtes ; une lecture compte deux requêtes
+(l'ECU, puis ses onduleurs). Après un échec, l'essai suivant attend
+5 minutes, puis 10, puis 20, jusqu'à 30 minutes : jamais avant
+l'intervalle, même quand le lien avec Gladys se coupe et revient. Le bouton
+de test décrit un ECU lu il y a moins d'un intervalle d'après cette lecture
+au lieu de le réinterroger. Après trois lectures ratées de suite, le statut
+passe au rouge : un ECU bloqué repart en général après l'avoir débranché
+une minute.
+
+**La nuit.** L'ECU est alimenté par le secteur et continue de répondre ;
+ses micro-onduleurs passent hors ligne avec le soleil. C'est l'état **en
+veille (nuit)**, jamais une erreur : la puissance de l'ECU passe à 0 W,
+chaque micro-onduleur est hors ligne à 0 W, le reste garde sa dernière
+valeur.
+
+**Les valeurs** sont celles de l'ECU : sa puissance actuelle, son énergie
+du jour, son énergie totale, le nombre d'onduleurs en ligne ; par
+micro-onduleur, ce que l'ECU donne (en ligne, la puissance de chaque
+panneau, la tension AC, la fréquence du réseau, la température quand il est
+en ligne). Un onduleur d'un type que la référence ne connaît pas n'a que
+**en ligne**, et les onduleurs listés après lui ne sont pas lus (deviner
+inventerait des onduleurs). L'**énergie totale** de l'ECU est l'index de
+production du suivi énergétique de Gladys, avec des règles strictes : un 0
+n'est jamais publié (certains firmwares d'ECU répondent 0 de temps en
+temps), une baisse n'est publiée qu'une fois confirmée par trois lectures,
+et un saut vers le haut plus grand que ce que les onduleurs ont pu produire
+est **retenu** : jamais accepté par simple répétition, seulement quand vous
+**enregistrez la configuration** (la lecture suivante est alors prise). Les
+micro-onduleurs n'ont pas de compteur d'énergie : l'ECU compte l'énergie,
+une seule fois.
+
+**Lecture seule.** Pas de marche/arrêt ni de limite de puissance via l'ECU
+dans cette version ; l'action « régler la limite de puissance solaire » ne
+concerne que les EZ1. Les déclencheurs « production solaire
+démarrée/arrêtée » se déclenchent aussi pour un ECU (sa puissance totale),
+et le widget comme l'action « lire la production solaire » le comptent.
+
 ## Scènes
 
 - **Production solaire démarrée** : un onduleur a produit 10 W ou plus
@@ -123,10 +201,17 @@ quand l'action de lecture est la première de la scène).
 - **L'énergie totale a baissé** : certains firmwares remettent ce compteur
   à zéro ; une lecture basse isolée est ignorée, une baisse durable est
   publiée.
+- **L'ECU ne répond pas** : vérifiez son adresse, qu'il est sur votre
+  réseau (`nc -v <adresse de l'ECU> 8899` depuis un ordinateur, puis tapez
+  `APS1100160001END` : il répond une ligne qui commence par `APS11`), et
+  débranchez-le une minute s'il est bloqué.
+- **L'énergie totale de l'ECU ne bouge plus** : un saut a été retenu (le
+  log le dit) : enregistrez la configuration pour l'accepter.
 - Logs : le niveau de log de l'intégration se règle avec la variable
   `LOG_LEVEL`.
 
 ## Confidentialité
 
 Tout reste sur votre réseau local : l'intégration ne parle qu'aux adresses
-que vous avez saisies, en HTTP sur le port 8050.
+que vous avez saisies, en HTTP sur le port 8050 (EZ1) et en TCP sur le port
+8899 (ECU).

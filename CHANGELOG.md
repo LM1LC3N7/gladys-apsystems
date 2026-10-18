@@ -10,7 +10,30 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Added
+
+- APsystems ECU gateways (ECU-B, ECU-R, ECU-C), asked for on the forum
+  (https://community.gladysassistant.com/t/11201/2): a new "ECU gateway
+  addresses" field reads each ECU on its local TCP port 8899 (protocol
+  ported from HAEdwin's APsystems ECU Reader 2.15.0 and ksheumaker's
+  original, Apache-2.0, see `THIRD_PARTY_NOTICES.md`). One device per ECU
+  (production power, energy of the day, lifetime energy as a production
+  index with its 30-minute production, inverters online, reachable) and one
+  per micro-inverter behind it (online, power total and per panel, AC
+  voltage, grid frequency, temperature), read-only. The ECU is read every
+  5 minutes at most (new "ECU refresh interval" field, 300 s minimum), one
+  connection at a time, with a pause between queries and longer waits after
+  a failure; at night, inverters offline is "sleeping", never an error. The
+  "solar production started/stopped" triggers, the widget and the "read the
+  solar production" action cover the ECUs. Never tested with a real ECU.
+  Nothing changes for EZ1 users.
+
 ### Fixed
+
+- The connection status is sent again at every (re)connection to Gladys,
+  which keeps it in memory.
+- A device republished in Discovery keeps every feature of the created one.
+- The Docker image ships `LICENSE` and `THIRD_PARTY_NOTICES.md`.
 
 - Docs: the outputs of the scene actions come from the variable list
   (`{{<step>.<action>.<key>}}`), not `{{<key>}}`.

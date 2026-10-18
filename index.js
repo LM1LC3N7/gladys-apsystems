@@ -34,7 +34,8 @@ gladys.onAction(ACTIONS.TEST, () => app.testConnection());
 // --- Configuration changed by the user ----------------------------------------
 gladys.onConfigUpdated((config) => {
   logger.info('Configuration updated: restarting');
-  return app.start(config);
+  // A save by the user also accepts an ECU lifetime index jump held back.
+  return app.configUpdated(config);
 });
 
 // --- Connection lifecycle ------------------------------------------------------
@@ -48,7 +49,7 @@ gladys.on('connected', async () => {
 gladys.on('disconnected', () => app.stop());
 gladys.handleShutdown(() => app.stop());
 
-logger.info('Starting the APsystems EZ1 integration...');
+logger.info('Starting the APsystems integration (EZ1, ECU)...');
 gladys.connect().catch((err) => {
   logger.error('Initial connection failed', err);
   process.exit(1);

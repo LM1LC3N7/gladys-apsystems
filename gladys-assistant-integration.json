@@ -1,10 +1,10 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "APsystems EZ1",
+  "name": "APsystems EZ1 & ECU",
   "description": {
-    "en": "Unofficial connector: APsystems EZ1 micro-inverters, live solar production and power limit.",
-    "fr": "Connecteur non officiel : micro-onduleurs APsystems EZ1, production solaire et limite de puissance."
+    "en": "Unofficial connector: APsystems EZ1 micro-inverters and ECU gateways, live solar production.",
+    "fr": "Connecteur non officiel : micro-onduleurs APsystems EZ1 et passerelles ECU, production solaire."
   },
   "version": "0.1.1",
   "docker_image": "ghcr.io/lm1lc3n7/gladys-apsystems:0.1.1",
@@ -17,12 +17,12 @@
       "key": "intro",
       "type": "section",
       "label": {
-        "en": "Your EZ1 micro-inverters in Gladys",
-        "fr": "Vos micro-onduleurs EZ1 dans Gladys"
+        "en": "Your APsystems micro-inverters in Gladys",
+        "fr": "Vos micro-onduleurs APsystems dans Gladys"
       },
       "description": {
-        "en": "Unofficial connector, not affiliated with APsystems. It reads your EZ1 micro-inverters (balcony solar) on your local network, through the local API each inverter opens once \"Local mode\" is enabled in the AP EasyPower app (choose \"Continuous\"): no cloud, no account. One device per inverter: production power (total and per panel), energy of the day, lifetime energy for the Gladys energy monitoring, power limit, on/off and alarms. Scene triggers when production starts or stops and on an alarm, scene actions to set the power limit and read the production, a dashboard widget. At night an EZ1 sleeps (no sun, no Wi-Fi): that is normal, not an error.",
-        "fr": "Connecteur non officiel, sans lien avec APsystems. Il lit vos micro-onduleurs EZ1 (solaire de balcon) sur votre réseau local, via l'API locale que chaque onduleur ouvre une fois le « Mode local » activé dans l'application AP EasyPower (choisissez « Continu ») : ni cloud ni compte. Un appareil par onduleur : puissance produite (totale et par panneau), énergie du jour, énergie totale pour le suivi énergétique de Gladys, limite de puissance, marche/arrêt et alarmes. Des déclencheurs de scène au début et à la fin de la production et sur alarme, des actions de scène pour régler la limite et lire la production, un widget. La nuit, un EZ1 dort (pas de soleil, pas de Wi-Fi) : c'est normal, pas une erreur."
+        "en": "Unofficial connector, not affiliated with APsystems. It reads your EZ1 micro-inverters (balcony solar) on your local network, through the local API each inverter opens once \"Local mode\" is enabled in the AP EasyPower app (choose \"Continuous\"): no cloud, no account. One device per inverter: production power (total and per panel), energy of the day, lifetime energy for the Gladys energy monitoring, power limit, on/off and alarms. Scene triggers when production starts or stops and on an alarm, scene actions to set the power limit and read the production, a dashboard widget. At night an EZ1 sleeps (no sun, no Wi-Fi): that is normal, not an error. Micro-inverters behind an ECU gateway (ECU-B, ECU-R, ECU-C: DS3, QS1, YC600, YC1000...) are read through the ECU's local port 8899, read-only: one device per ECU (power, energy of the day, lifetime energy, inverters online) and one per micro-inverter (online, power per panel, voltage, frequency, temperature). Never tested with a real ECU.",
+        "fr": "Connecteur non officiel, sans lien avec APsystems. Il lit vos micro-onduleurs EZ1 (solaire de balcon) sur votre réseau local, via l'API locale que chaque onduleur ouvre une fois le « Mode local » activé dans l'application AP EasyPower (choisissez « Continu ») : ni cloud ni compte. Un appareil par onduleur : puissance produite (totale et par panneau), énergie du jour, énergie totale pour le suivi énergétique de Gladys, limite de puissance, marche/arrêt et alarmes. Des déclencheurs de scène au début et à la fin de la production et sur alarme, des actions de scène pour régler la limite et lire la production, un widget. La nuit, un EZ1 dort (pas de soleil, pas de Wi-Fi) : c'est normal, pas une erreur. Les micro-onduleurs derrière une passerelle ECU (ECU-B, ECU-R, ECU-C : DS3, QS1, YC600, YC1000…) sont lus par le port local 8899 de l'ECU, en lecture seule : un appareil par ECU (puissance, énergie du jour, énergie totale, onduleurs en ligne) et un par micro-onduleur (en ligne, puissance par panneau, tension, fréquence, température). Jamais testé avec un vrai ECU."
       },
       "links": [
         {
@@ -61,6 +61,30 @@
       "default": 30,
       "min": 10,
       "max": 300
+    },
+    {
+      "key": "ecu_hosts",
+      "type": "string",
+      "label": { "en": "ECU gateway addresses", "fr": "Adresses des passerelles ECU" },
+      "description": {
+        "en": "For micro-inverters behind an APsystems ECU gateway (ECU-B, ECU-R, ECU-C): the IP address of each ECU, separated by commas (port 8899 by default). Give it a fixed address in your router. Leave empty if you only have EZ1s.",
+        "fr": "Pour des micro-onduleurs derrière une passerelle APsystems ECU (ECU-B, ECU-R, ECU-C) : l'adresse IP de chaque ECU, séparées par des virgules (port 8899 par défaut). Donnez-lui une adresse fixe dans votre box. Laissez vide si vous n'avez que des EZ1."
+      },
+      "required": false,
+      "placeholder": { "en": "192.168.1.60", "fr": "192.168.1.60" }
+    },
+    {
+      "key": "ecu_poll_interval",
+      "type": "number",
+      "label": { "en": "ECU refresh interval (s)", "fr": "Intervalle de lecture des ECU (s)" },
+      "description": {
+        "en": "How often each ECU is read. An ECU hangs when it is asked too often: 300 s (5 minutes) is the minimum, the pace recommended by the Home Assistant integration. After a failure the next attempt waits longer.",
+        "fr": "Fréquence de lecture de chaque ECU. Un ECU se bloque si on l'interroge trop souvent : 300 s (5 minutes) est le minimum, le rythme recommandé par l'intégration Home Assistant. Après un échec, l'essai suivant attend plus longtemps."
+      },
+      "required": false,
+      "default": 300,
+      "min": 300,
+      "max": 3600
     }
   ],
   "actions": [
@@ -69,8 +93,8 @@
       "timeout_seconds": 60,
       "label": { "en": "Test the inverters", "fr": "Tester les onduleurs" },
       "description": {
-        "en": "Asks each address above who answers: model, serial, firmware, power now. At night the inverters sleep: test by day.",
-        "fr": "Demande à chaque adresse ci-dessus qui répond : modèle, numéro de série, firmware, puissance actuelle. La nuit les onduleurs dorment : testez de jour."
+        "en": "Asks each address above who answers: model, serial, firmware, power now. At night the EZ1s sleep: test by day. An ECU read less than an interval ago is reported from that reading, not asked again.",
+        "fr": "Demande à chaque adresse ci-dessus qui répond : modèle, numéro de série, firmware, puissance actuelle. La nuit les EZ1 dorment : testez de jour. Un ECU lu il y a moins d'un intervalle est décrit d'après cette lecture, sans le réinterroger."
       }
     }
   ],
@@ -79,8 +103,8 @@
       "key": "solar",
       "label": { "en": "Solar production", "fr": "Production solaire" },
       "description": {
-        "en": "Power now, energy today and lifetime, per panel, limit and state of an inverter, or of all of them.",
-        "fr": "Puissance, énergie du jour et totale, par panneau, limite et état d'un onduleur, ou de tous."
+        "en": "Power now, energy today and lifetime, per panel, limit and state of an inverter or an ECU, or of all of them.",
+        "fr": "Puissance, énergie du jour et totale, par panneau, limite et état d'un onduleur ou d'un ECU, ou de tous."
       },
       "icon": "sun",
       "settings": [
@@ -99,8 +123,8 @@
       "key": "production_started",
       "label": { "en": "Solar production started", "fr": "Production solaire démarrée" },
       "description": {
-        "en": "An inverter produces again (10 W or more for a minute): in the morning, or after a stop.",
-        "fr": "Un onduleur produit à nouveau (10 W ou plus pendant une minute) : le matin, ou après un arrêt."
+        "en": "An inverter or an ECU gateway produces again (10 W or more for a minute): in the morning, or after a stop.",
+        "fr": "Un onduleur ou une passerelle ECU produit à nouveau (10 W ou plus pendant une minute) : le matin, ou après un arrêt."
       },
       "fields": [
         {
@@ -130,8 +154,8 @@
       "key": "production_stopped",
       "label": { "en": "Solar production stopped", "fr": "Production solaire arrêtée" },
       "description": {
-        "en": "An inverter stopped producing: 15 minutes under 5 W, or asleep (in the evening).",
-        "fr": "Un onduleur a cessé de produire : 15 minutes sous 5 W, ou en veille (le soir)."
+        "en": "An inverter or an ECU gateway stopped producing: 15 minutes under 5 W, or asleep (in the evening).",
+        "fr": "Un onduleur ou une passerelle ECU a cessé de produire : 15 minutes sous 5 W, ou en veille (le soir)."
       },
       "fields": [
         {
@@ -213,8 +237,8 @@
       "key": "set_power_limit",
       "label": { "en": "Set the solar power limit", "fr": "Régler la limite de puissance solaire" },
       "description": {
-        "en": "Caps the output of an inverter, in W, within its bounds (30 to 800 W on an EZ1-M). Not rewritten when the inverter already has it.",
-        "fr": "Plafonne la production d'un onduleur, en W, dans ses bornes (30 à 800 W sur un EZ1-M). Pas réécrite si l'onduleur l'a déjà."
+        "en": "Caps the output of an EZ1, in W, within its bounds (30 to 800 W on an EZ1-M). Not rewritten when the inverter already has it. Not available through an ECU.",
+        "fr": "Plafonne la production d'un EZ1, en W, dans ses bornes (30 à 800 W sur un EZ1-M). Pas réécrite si l'onduleur l'a déjà. Indisponible via un ECU."
       },
       "timeout_seconds": 30,
       "fields": [
@@ -246,8 +270,8 @@
       "key": "get_production",
       "label": { "en": "Read the solar production", "fr": "Lire la production solaire" },
       "description": {
-        "en": "The production of one inverter or of all of them, for a message or a condition that follows.",
-        "fr": "La production d'un onduleur ou de tous, pour un message ou une condition qui suit."
+        "en": "The production of one inverter or ECU, or of all of them, for a message or a condition that follows.",
+        "fr": "La production d'un onduleur ou d'un ECU, ou de tous, pour un message ou une condition qui suit."
       },
       "timeout_seconds": 30,
       "fields": [

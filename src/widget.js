@@ -29,25 +29,34 @@ function alarmLabel(id) {
   return dc ? T.widget.alarms.dc(Number(dc[1])) : (T.widget.alarms[id] ?? { en: id, fr: id });
 }
 
-/** One inverter: `inverter` is { name, deviceId, status, power, inputs, energyToday, energyTotal, limit, alarms }. */
+/**
+ * One device: `inverter` is { kind, name, deviceId, status, power, inputs,
+ * energyToday, energyTotal, limit, alarms } and, for an ECU (`kind`
+ * 'ecu'), online and inverters; for a micro-inverter behind an ECU
+ * ('micro'), temperature and no energy tiles (the ECU counts the energy).
+ */
 function singleWidget(inverter, language) {
   const feature = (key) => ids.feature(inverter.deviceId, key);
   const components = [
     { type: 'text', text: inverter.name.slice(0, 40), variant: 'heading' },
     { type: 'value', label: T.widget.power, device_feature: feature(FEATURE.POWER), icon: 'sun' },
-    {
-      type: 'value',
-      label: T.widget.today,
-      device_feature: feature(FEATURE.ENERGY_TODAY),
-      icon: 'bar-chart-2',
-    },
-    {
-      type: 'value',
-      label: T.widget.lifetime,
-      device_feature: feature(FEATURE.ENERGY_TOTAL),
-      icon: 'battery-charging',
-    },
   ];
+  if (inverter.kind !== 'micro') {
+    components.push(
+      {
+        type: 'value',
+        label: T.widget.today,
+        device_feature: feature(FEATURE.ENERGY_TODAY),
+        icon: 'bar-chart-2',
+      },
+      {
+        type: 'value',
+        label: T.widget.lifetime,
+        device_feature: feature(FEATURE.ENERGY_TOTAL),
+        icon: 'battery-charging',
+      },
+    );
+  }
   const awake = ['producing', 'idle', 'off'].includes(inverter.status);
   const items = [
     {
@@ -57,6 +66,22 @@ function singleWidget(inverter, language) {
       color: COLORS[inverter.status] ?? WIDGET_COLORS.NEUTRAL,
     },
   ];
+  if (inverter.kind === 'ecu' && inverter.online !== null && inverter.online !== undefined) {
+    items.push({
+      label: pick(T.widget.online, language),
+      value: `${inverter.online} / ${inverter.inverters ?? '?'}`,
+      icon: 'cpu',
+      color: inverter.online > 0 ? WIDGET_COLORS.SUCCESS : WIDGET_COLORS.NEUTRAL,
+    });
+  }
+  if (inverter.temperature !== null && inverter.temperature !== undefined) {
+    items.push({
+      label: pick(T.widget.temperature, language),
+      value: `${inverter.temperature} °C`,
+      icon: 'thermometer',
+      color: WIDGET_COLORS.NEUTRAL,
+    });
+  }
   for (const [index, watts] of (inverter.inputs ?? []).entries()) {
     items.push({
       label: pick(T.widget.input(index + 1), language),
@@ -154,5 +179,12 @@ export function solarWidget({ inverters, deviceId, language = 'en' }) {
       return singleWidget(inverter, language);
     }
   }
-  return totalWidget(inverters, language);
+  // The micro-inverters behind an ECU are already in its totals.
+  const rows = inverters.filter((i) => i.kind !== 'micro');
+  return rows.length > 0
+    ? totalWidget(rows, language)
+    : {
+        ttl_seconds: 300,
+        components: [{ type: 'text', text: T.widget.none, variant: 'body' }, caption],
+      };
 }
