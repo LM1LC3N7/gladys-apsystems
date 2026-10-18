@@ -173,8 +173,9 @@ test/helpers/       fake EZ1 inverters (fetch, firmware variants, sleep),
   within 1.5 x the EZ1 max power (2 kW per ECU inverter, 80 inverters when
   unknown) over two intervals at least passes; a fall or a bigger jump is
   held, shown in the status and the test button, and taken only by the
-  `accept_index` button, in its direction. Never confirmed by repetition
-  nor by time.
+  `accept_index` button, within bounds (the value shown, minus the slack,
+  up to it plus what could be produced since). Never confirmed by
+  repetition nor by time.
 - **Built blind**: every endpoint name lives in `src/ez1.js`, every field
   name in `src/model.js`, so a user report fixes one place. `TODO.md` lists
   what a tester must confirm.

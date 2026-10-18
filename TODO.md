@@ -81,10 +81,15 @@
   3 failed readings. A connection that could not be opened is tried once
   more; a query that reached the ECU is never sent twice. The pace of each
   address lives in its own bounded table (50 addresses), kept across a
-  reconnection to Gladys (`start()`) and saved in `/data/state.json`
-  (`nextAt` capped when read back), so neither a flapping link nor a
-  restart bursts queries. An address no longer configured nor used by a
-  created ECU is forgotten. The test button reads an ECU only when it is
+  reconnection to Gladys (`start()`) and saved in `/data/state.json` at
+  once after each ECU reading (`nextAt` capped when read back), so neither
+  a flapping link nor a restart bursts queries. An address no longer
+  configured nor used by a created ECU is dropped from the addresses (also
+  right after an ECU moved to a new address), but its pace is kept (bounded
+  table): typed again, it keeps its wait. The status ignores an address
+  neither configured nor used. Micro-inverter states go out in batches of
+  100 with at least 20 s between two batches (Gladys takes 300 states a
+  minute). The test button reads an ECU only when it is
   due (`now >= nextAt`), every address in parallel. The ECUs are refreshed
   apart from the EZ1 loop (the EZ1 tick never waits for an ECU).
 - **Not sent**: the signal-strength query (0030) of the reference, one more
@@ -100,11 +105,21 @@
   ECU 2 kW x max(inverters, inverters listed, 1) + 0.5 kWh, 80 inverters
   when the ECU says nothing. A fall or a bigger jump is held (never by
   repetition nor time), shown in the status (green) and the test button
-  with both values, and taken only by the `accept_index` button, in its
-  direction only (a fall taken counts nothing, a jump taken is counted
-  once). A save of the configuration no longer accepts anything. The guard
-  state ({ last value, date, held }) is saved in `/data/state.json`; the
-  Gladys value is dated with `last_value_changed` (else 24 hours back).
+  with both values, and taken only by the `accept_index` button (it
+  accepts every hold at once). The acceptance is bounded, as in
+  gladys-p1-monitor de1e5d6: a value v is taken only if first - slack <= v
+  <= first + maxKw x (at - firstAt) + slack, `first` the value shown and
+  `firstAt` when it was read; any other value starts a new hold and drops
+  the acceptance (the status shows the new one). The acceptance is not
+  saved: after a restart the user presses again. A save of the
+  configuration accepts nothing. A value equal to the reference dates it
+  (`last.at = at`). The EZ1's first reading after the night uses the short
+  window (two intervals), never the hours of the night. /data keeps
+  { last value, date, held }: a hold is written at once, a new last value
+  at most every 15 minutes; when read back, a hold whose `from` is not the
+  last value, or whose values are on the wrong side, is dropped, and its
+  `firstAt` becomes the time of the load. The Gladys value is dated with
+  `last_value_changed` (else 24 hours back).
 - **Stale micro-inverters**: a created micro-inverter missing from the last
   valid inverter frame of its ECU, or seen more than 2 intervals ago, is
   published offline at 0 W and shown asleep (waiting if never seen).

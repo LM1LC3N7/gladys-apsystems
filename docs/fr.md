@@ -81,9 +81,13 @@ entier : l'intégration le protège donc (EZ1 comme ECU) :
   simple répétition ni avec le temps. Le statut de connexion (qui reste
   vert) et le bouton **Tester les onduleurs** l'affichent, avec les deux
   valeurs. S'il est réel (compteur remis à zéro, onduleur remplacé),
-  cliquez sur **Accepter l'énergie totale** : la lecture suivante dans ce
-  sens est prise. Un saut accepté est compté une fois comme production ;
-  une baisse ne compte rien. Une valeur revenue à la normale (c'était un
+  cliquez sur **Accepter l'énergie totale** (il accepte toutes les valeurs
+  retenues à la fois) : la lecture suivante proche de la valeur affichée
+  (plus ce que les onduleurs ont pu produire depuis) est prise ; toute
+  autre lecture est de nouveau retenue. Un saut accepté est compté une fois
+  comme production ; une baisse ne compte rien. L'acceptation n'est pas
+  gardée après un redémarrage de l'intégration : recliquez après un
+  redémarrage. Une valeur revenue à la normale (c'était un
   raté) lève la retenue d'elle-même ;
 - la dernière valeur publiée et ce qui est retenu sont gardés dans
   `/data/state.json` : un redémarrage ne change rien.

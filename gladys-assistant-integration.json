@@ -102,8 +102,8 @@
       "timeout_seconds": 30,
       "label": { "en": "Accept the lifetime energy", "fr": "Accepter l'énergie totale" },
       "description": {
-        "en": "Only when the status says a lifetime energy value is held back (a jump or a fall the inverter could not have made): the next reading in that direction is taken. A jump taken is counted once as production; a fall counts nothing.",
-        "fr": "Seulement quand le statut indique qu'une valeur d'énergie totale est retenue (un saut ou une baisse impossible pour l'onduleur) : la lecture suivante dans ce sens est prise. Un saut accepté est compté une fois comme production ; une baisse ne compte rien."
+        "en": "Only when the status says a lifetime energy value is held back (a jump or a fall the inverter could not have made). Accepts EVERY value held back at once: the next reading close to the value shown is taken (a jump is counted once as production, a fall counts nothing); any other reading is held again. The acceptance is not kept across a restart of the integration: press again after one.",
+        "fr": "Seulement quand le statut indique qu'une valeur d'énergie totale est retenue (un saut ou une baisse impossible pour l'onduleur). Accepte TOUTES les valeurs retenues à la fois : la lecture suivante proche de la valeur affichée est prise (un saut est compté une fois comme production, une baisse ne compte rien) ; toute autre lecture est de nouveau retenue. L'acceptation n'est pas gardée après un redémarrage de l'intégration : recliquez après un redémarrage."
       }
     }
   ],

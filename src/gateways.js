@@ -44,6 +44,7 @@ const AWAKE = new Set(['producing', 'idle']);
 const MAX_PACED = 50;
 /** States per request to Gladys. */
 const BATCH = 100;
+const BATCH_GAP = 20_000;
 
 const sumOf = (values) => values.reduce((total, w) => total + w, 0);
 
@@ -90,7 +91,10 @@ export class EcuGateways {
     this.publishedSignature = undefined;
   }
 
-  /** Forget the addresses nobody uses any more. */
+  /**
+   * Forget the addresses nobody uses any more. Their pace stays (bounded):
+   * an address typed again later keeps its wait.
+   */
   prune() {
     const used = new Set([
       ...this.configured,
@@ -101,11 +105,6 @@ export class EcuGateways {
     for (const key of [...this.hosts.keys()]) {
       if (!used.has(key)) {
         this.hosts.delete(key);
-      }
-    }
-    for (const key of [...this.pacing.keys()]) {
-      if (!used.has(key)) {
-        this.pacing.delete(key);
       }
     }
   }
@@ -265,6 +264,7 @@ export class EcuGateways {
         previous.status = 'unreachable';
       }
     }
+    const moved = this.ecus.get(data.id)?.hostKey;
     host.ecuId = data.id;
     const ecu = this.ecu(data.id);
     if (ecu.status === 'unreachable') {
@@ -326,6 +326,10 @@ export class EcuGateways {
         minHours: (2 * this.interval) / 3_600_000,
       },
     );
+    if (moved !== undefined && moved !== host.key) {
+      // The ECU answers at a new address: the old one is no longer used.
+      this.prune();
+    }
     await this.publishEcu(ecu, { at, energyTotal: accepted ? data.lifetimeEnergy : undefined });
     await this.publishMicros(at);
     await this.app.persist({ urgent: true });
@@ -408,6 +412,10 @@ export class EcuGateways {
       }
     }
     for (let i = 0; i < states.length; i += BATCH) {
+      if (i > 0) {
+        // Gladys takes 300 states a minute: at least 20 s between two batches.
+        await this.app.sleep(BATCH_GAP);
+      }
       await this.app.publish({ device: { name: 'ECU inverters' } }, states.slice(i, i + BATCH), []);
     }
   }
@@ -480,6 +488,7 @@ export class EcuGateways {
           (h) =>
             !h.ecuId &&
             !createdHosts.has(h.key) &&
+            this.configured.has(h.key) &&
             this.pace(h.key).misses >= ECU.MISSES_BEFORE_UNREACHABLE,
         )
         .map((h) => h.key),

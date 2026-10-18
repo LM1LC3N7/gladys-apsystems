@@ -22,10 +22,13 @@ function validGuard(raw, now) {
     return undefined;
   }
   const held = raw.held;
+  // A hold coherent with the reference only (the guard checks the sides again).
   const keepHeld =
     held &&
     (held.direction === 'up' || held.direction === 'down') &&
-    [held.from, held.to, held.threshold, held.first].every(finite);
+    [held.from, held.to, held.threshold, held.first].every(finite) &&
+    held.from === last.value &&
+    (held.direction === 'up' ? held.first > held.from : held.first < held.from);
   return {
     last: { value: last.value, at: last.at },
     held: keepHeld

@@ -35,6 +35,16 @@ the notes of the version's GitHub Release.
 
 ### Changed
 
+- Accepting a lifetime energy value held back is bounded: only a reading
+  close to the value shown (plus what the inverters could have produced
+  since) is taken, any other reading is held again; the button accepts
+  every value held at once and must be pressed again after a restart. A
+  reading equal to the last value dates it, and the first EZ1 reading after
+  the night gets the short margin, so a glitch at dawn is held.
+- `/data/state.json`: a new last value is written at most every 15
+  minutes (holds and the ECU pace at once); an incoherent hold read back is
+  dropped.
+
 - Store name: "APsystems EZ1 & ECU" (was "APsystems EZ1"), and the
   catalog description.
 - The lifetime energy index (EZ1 and ECU) is guarded like the other energy

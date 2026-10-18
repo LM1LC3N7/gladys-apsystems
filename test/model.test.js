@@ -132,7 +132,7 @@ test('EZ1 lifetime index: a low reading or a reset is held, never confirmed by r
   }
   assert.equal(guard.held.direction, 'down');
   guard.acceptHeld();
-  assert.equal(guard.accept(2.5, NOON + 4 * MIN, limits), true, 'taken once the user accepts');
+  assert.equal(guard.accept(2.25, NOON + 4 * MIN, limits), true, 'taken once the user accepts');
   assert.equal(guard.accept(undefined, NOON, limits), false);
   assert.equal(guard.accept(null, NOON, limits), false);
 });

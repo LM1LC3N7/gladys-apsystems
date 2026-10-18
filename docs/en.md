@@ -75,9 +75,12 @@ alike):
 - a fall, or a larger jump, is **held back**: never accepted by repetition
   nor by time. The connection status (it stays green) and the **Test the
   inverters** button show it, with both values. If it is real (a counter
-  reset, an inverter replaced), press **Accept the lifetime energy**: the
-  next reading in that direction is taken. A jump taken is counted once as
-  production; a fall counts nothing. A value back to normal (it was a
+  reset, an inverter replaced), press **Accept the lifetime energy** (it accepts every value held
+  back at once): the next reading close to the value shown (within what
+  the inverters could have produced since) is taken; any other reading is
+  held again. A jump taken is counted once as production; a fall counts
+  nothing. The acceptance is not kept across a restart of the
+  integration: press again after one. A value back to normal (it was a
   glitch) ends the hold by itself;
 - the last value published and what is held are kept in
   `/data/state.json`, so a restart changes nothing.

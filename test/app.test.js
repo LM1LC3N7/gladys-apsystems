@@ -194,6 +194,27 @@ test('the night: asleep, quiet, no red status; one event at dusk, one at dawn', 
   assert.equal(ctx.gladys.fake.sceneEvents[1].data.power, 40);
 });
 
+test('the dawn: the first reading after the night gets the short window, +20 kWh is held', async () => {
+  const ctx = await setup({ inverters: { [A]: fakeInverter() } });
+  await startAndCreate(ctx);
+  assert.equal(ctx.state(ID_A, 'energy_total'), 810.437);
+  const inv = ctx.inverters[A];
+  inv.output = { ...inv.output, p1: 1, p2: 2 };
+  await ctx.advance(30 * SEC);
+  inv.asleep = true;
+  for (let i = 0; i < 3; i += 1) {
+    await ctx.advance(30 * SEC);
+  }
+  // Ten hours later: 12 kWh of margin by the clock, but the EZ1 slept.
+  ctx.clock.now += 10 * 60 * MIN;
+  inv.asleep = false;
+  inv.output = { ...inv.output, p1: 20, te1: Number(inv.output.te1) + 20 };
+  await ctx.advance(PACING.ASLEEP);
+  assert.equal(ctx.state(ID_A, 'reachable'), 1);
+  assert.equal(ctx.state(ID_A, 'energy_total'), 810.437, 'a +20 kWh glitch at dawn is held');
+  assert.match(ctx.status().message.en, /jumped from 810\.437 to 830\.437 kWh/);
+});
+
 test('a creation during a reading does not read the inverter twice', async () => {
   const ctx = await setup({ inverters: { [A]: fakeInverter() } });
   await startAndCreate(ctx);

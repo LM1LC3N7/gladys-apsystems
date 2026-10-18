@@ -358,7 +358,7 @@ test('the index guard: never 0, jumps and falls held, accepted only in their dir
   // The jump again; the user accepts it: taken once.
   assert.equal(guard.accept(20_000, t + 60_000, limits), false);
   assert.equal(guard.acceptHeld(), true);
-  assert.equal(guard.accept(20_001, t + 120_000, limits), true);
+  assert.equal(guard.accept(20_000.3, t + 120_000, limits), true);
   assert.equal(guard.acceptHeld(), false, 'nothing held any more');
 });
 
@@ -397,11 +397,49 @@ test('the margin: two intervals at least, a day for a reference without a date',
   assert.equal(undated.accept(1040, NOON, limits), true, 'a day of margin after a restart');
   const dated = new IndexGuard({ known: { value: 1000, at: NOON - 60_000 }, now: NOON });
   assert.equal(dated.accept(1040, NOON, limits), false, '40 kWh in a minute: held');
-  // What /data kept wins over an older Gladys value, its hold included.
-  const saved = { last: { value: 1100, at: NOON - 60_000 }, held: dated.state().held };
-  const restored = new IndexGuard({ known: { value: 1000, at: NOON - HOUR }, saved, now: NOON });
-  assert.equal(restored.last.value, 1100);
-  assert.equal(restored.held.direction, 'up');
+  // What /data kept: its hold too, dated at the load.
+  const saved = dated.state();
+  const later = NOON + 10 * HOUR;
+  const restored = new IndexGuard({ known: { value: 1000, at: NOON - HOUR }, saved, now: later });
+  assert.equal(restored.last.value, 1000);
+  assert.deepEqual([restored.held.direction, restored.held.first], ['up', 1040]);
+  assert.equal(restored.held.firstAt, later, 'the margin of an acceptance counts from the load');
+  // An incoherent hold is dropped: `from` is not the reference, or the wrong side.
+  const newer = new IndexGuard({
+    saved: { last: { value: 1100, at: NOON }, held: saved.held },
+    now: later,
+  });
+  assert.equal(newer.held, undefined);
+  const wrongSide = new IndexGuard({
+    saved: { last: saved.last, held: { ...saved.held, direction: 'down' } },
+    now: later,
+  });
+  assert.equal(wrongSide.held, undefined);
+});
+
+test('an acceptance is bounded: the value shown, plus what could be produced since', () => {
+  const limits = { maxKw: 2, slack: 0.5, minHours: 0 };
+  // A jump of +5 kWh in a minute, accepted, then a reading at 5000: held again.
+  const up = new IndexGuard({ known: { value: 1000, at: NOON }, now: NOON });
+  assert.equal(up.accept(1005, NOON + 60_000, limits), false);
+  assert.equal(up.acceptHeld(), true);
+  assert.equal(up.accept(5000, NOON + 2 * 60_000, limits), false, 'not what was accepted');
+  assert.deepEqual([up.held.direction, up.held.first, up.accepted], ['up', 5000, undefined]);
+  assert.equal(up.accept(5000, NOON + 3 * 60_000, limits), false, 'and not by repetition');
+  // Re-accepted, the value shown then is taken.
+  up.acceptHeld();
+  assert.equal(up.accept(5000.01, NOON + 4 * 60_000, limits), true);
+  // A fall accepted at 4000, then a reading at 10: held again.
+  const down = new IndexGuard({ known: { value: 5000, at: NOON }, now: NOON });
+  assert.equal(down.accept(4000, NOON + 60_000, limits), false);
+  down.acceptHeld();
+  assert.equal(down.accept(10, NOON + 2 * 60_000, limits), false);
+  assert.deepEqual([down.held.first, down.accepted], [10, undefined]);
+  // A value equal to the reference dates it: the margin starts again from now.
+  const same = new IndexGuard({ known: { value: 1000, at: NOON - 10 * HOUR }, now: NOON });
+  assert.equal(same.accept(1000, NOON, limits), true);
+  assert.equal(same.last.at, NOON);
+  assert.equal(same.accept(1003, NOON + 60_000, limits), false, 'not 10 hours of margin');
 });
 
 test('the configuration: ECU addresses on port 8899, an interval of 300 s at least', () => {

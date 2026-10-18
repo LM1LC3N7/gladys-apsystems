@@ -54,6 +54,8 @@ import { solarWidget } from './widget.js';
 const defaultTimers = { setTimeout, clearTimeout, setInterval, clearInterval };
 const AWAKE = new Set(['producing', 'idle', 'off']);
 const SILENT = new Set(['asleep', 'unreachable']);
+/** A new last value of an index is written to /data at most this often. */
+const PERSIST_EVERY = 15 * 60_000;
 
 /** Join several { en, fr } texts into one. */
 const joinTexts = (...texts) => ({
@@ -109,6 +111,11 @@ export class ApsystemsApp {
 
   // --- Lifecycle -------------------------------------------------------------
 
+  /** A pause on the app's timers. */
+  sleep(ms) {
+    return new Promise((resolve) => this.timers.setTimeout(resolve, ms));
+  }
+
   /** Read /data/state.json once per process. */
   loadState() {
     if (!this.stateLoaded) {
@@ -124,12 +131,13 @@ export class ApsystemsApp {
   }
 
   /**
-   * Write /data/state.json: at once when `urgent` (a value held, an ECU
-   * reading), else at most every minute.
+   * Write /data/state.json: at once when `urgent` (a hold that starts or
+   * ends, an acceptance, the pace of an ECU), else (a new last value) at most
+   * every 15 minutes.
    */
   async persist({ urgent = false } = {}) {
     const now = this.now();
-    if (!urgent && now - this.lastSaveAt < 60_000) {
+    if (!urgent && now - this.lastSaveAt < PERSIST_EVERY) {
       this.saveDue = true;
       return;
     }
@@ -632,6 +640,8 @@ export class ApsystemsApp {
       await this.missed(inverter, err);
       return;
     }
+    // After the night (asleep, not after an outage by day: it may have produced then).
+    const wokeUp = inverter.status === 'asleep';
     if (SILENT.has(inverter.status)) {
       this.logger.info(`${inverter.device.name} answers again`);
       // The first alarm reading after waking up only arms: the EZ1 checks
@@ -647,11 +657,15 @@ export class ApsystemsApp {
     await this.readSlowData(inverter, client, events);
     inverter.day = dayEnergyStep(inverter.day, output.energy, now);
     const guard = this.guardFor(`ez1:${inverter.serial}`, inverter.device);
+    const minHours = (2 * this.config.pollInterval) / 3600;
     const publishIndex = this.acceptIndexValue(inverter.device.name, guard, output.lifetime, now, {
       // 1.5 x the inverter's maximum power, over two intervals at least.
       maxKw: (1.5 * this.bounds(inverter).max) / 1000,
       slack: EZ1_INDEX_SLACK_KWH,
-      minHours: (2 * this.config.pollInterval) / 3600,
+      minHours,
+      // The first reading after the night: the EZ1 produced nothing while
+      // asleep, so the short window only, never the hours of the night.
+      ...(wokeUp ? { window: minHours } : {}),
     });
     inverter.status = inverter.on === false ? 'off' : output.power > 0 ? 'producing' : 'idle';
     events.push(...this.productionEvents(inverter, output.power, now));
