@@ -18,6 +18,15 @@ the notes of the version's GitHub Release.
   margin now counts from the last held reading (two intervals at least),
   and such a reading becomes the value held, its kWh shown: nothing is
   counted without the user.
+- Lifetime energy guard: a reading that did not match an accepted value
+  dropped the hold along with the acceptance, so it was checked against the
+  margin of an old reference and could count fictitious kWh (an ECU silent
+  for days). Only the acceptance is dropped now; the hold and its short
+  margin stay, and the reading becomes the value held.
+- Lifetime energy guard: during a hold, the first EZ1 reading after the
+  night was given every hour since the hold instead of the short dawn
+  window, so a jump at dawn could be counted. The dawn window now applies,
+  hold or not.
 
 ## [0.1.2] - 2026-10-18
 

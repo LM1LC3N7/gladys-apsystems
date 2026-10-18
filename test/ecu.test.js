@@ -462,6 +462,38 @@ test('an acceptance is bounded: the value shown, plus what could be produced sin
   assert.equal(same.accept(1003, NOON + 60_000, limits), false, 'not 10 hours of margin');
 });
 
+test('an acceptance not matched keeps the hold: its short margin, not the old reference', () => {
+  // An ECU of many inverters: 20 kW, so 5 days of margin by the clock is 2,400 kWh.
+  const limits = { maxKw: 20, slack: 0.5, minHours: (2 * 300) / 3600 };
+  const guard = new IndexGuard({ known: { value: 5000, at: NOON - 5 * 24 * HOUR }, now: NOON });
+  assert.equal(guard.accept(8000, NOON, limits), false, 'a jump: held');
+  assert.equal(guard.acceptHeld(), true);
+  // Not the value accepted, and 1,000 kWh above the reference in five minutes.
+  assert.equal(guard.accept(6000, NOON + 5 * 60_000, limits), false, 'held, never taken');
+  assert.equal(guard.last.value, 5000, 'no fictitious kWh counted');
+  assert.deepEqual(
+    [guard.held.direction, guard.held.from, guard.held.first, guard.accepted],
+    ['up', 5000, 6000, undefined],
+    'the value read is the hold now, its kWh shown, the acceptance dropped',
+  );
+});
+
+test('the dawn window applies during a hold too: the night is not margin', () => {
+  // An EZ1: 1.2 kW, a window of two 5-minute intervals.
+  const minHours = (2 * 300) / 3600;
+  const limits = { maxKw: 1.2, slack: 0.2, minHours };
+  const evening = NOON + 6 * HOUR;
+  const held = new IndexGuard({ known: { value: 1000, at: evening }, now: evening });
+  assert.equal(held.accept(1100, evening + 60_000, limits), false, 'a jump in the evening: held');
+  // Dawn, 14 hours later: +10 kWh on the first reading after the night.
+  const dawn = evening + 14 * HOUR;
+  assert.equal(held.accept(1010, dawn, { ...limits, window: minHours }), false, 'held at dawn');
+  assert.equal(held.last.value, 1000, 'nothing counted');
+  // The same reading without a hold: refused as well.
+  const free = new IndexGuard({ known: { value: 1000, at: evening }, now: evening });
+  assert.equal(free.accept(1010, dawn, { ...limits, window: minHours }), false);
+});
+
 test('the configuration: ECU addresses on port 8899, an interval of 300 s at least', () => {
   const config = normalizeConfig({
     hosts: '192.168.1.50',

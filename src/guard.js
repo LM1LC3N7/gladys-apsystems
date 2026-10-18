@@ -123,6 +123,7 @@ export class IndexGuard {
       // Unchanged: published, dated now (the margin of the next rise starts here).
       return this.take(value, at);
     }
+    let refused = false;
     if (this.accepted) {
       // Bounded: the value shown to the user, and what could be produced since.
       const { first, firstAt } = this.accepted;
@@ -130,27 +131,34 @@ export class IndexGuard {
       if (value >= first - slack && value <= top) {
         return this.take(value, at);
       }
-      // Not what the user accepted: held again (from this value), the acceptance dropped.
+      // Not what the user accepted: the acceptance dropped, the hold KEPT (its
+      // short margin still applies; the value read becomes the hold below).
       this.accepted = undefined;
-      this.held = undefined;
+      refused = true;
     }
     const up = this.held?.direction === 'up';
     if (up && value >= this.held.threshold) {
-      this.held = { ...this.held, to: value, at };
+      this.held = {
+        ...this.held,
+        to: value,
+        at,
+        ...(refused ? { first: value, firstAt: at } : {}),
+      };
       return false;
     }
-    // While a value is held, the margin is a SHORT one, counted from the
-    // last held reading (held.at), never from last.at: hours of silence
-    // behind an old reference must not let an intermediate value through.
-    const hours = this.held
-      ? Math.max(minHours, Math.max(0, at - this.held.at) / HOUR)
-      : (window ?? Math.max(minHours, Math.max(0, at - this.last.at) / HOUR));
+    // The first reading after the night gets `window` only, hold or not.
+    // Otherwise, while a value is held, the margin is a SHORT one, counted
+    // from the last held reading (held.at), never from last.at: hours of
+    // silence behind an old reference must not let an intermediate value through.
+    const since = this.held ? this.held.at : this.last.at;
+    const hours = window ?? Math.max(minHours, Math.max(0, at - since) / HOUR);
     if (value > this.last.value && value - this.last.value <= maxKw * hours + slack) {
       return this.take(value, at);
     }
     const direction = value > this.last.value ? 'up' : 'down';
-    // A jump below the one held becomes the hold itself, its kWh shown.
-    const same = this.held?.direction === direction && direction === 'down';
+    // A jump below the one held becomes the hold itself, its kWh shown. A
+    // value refused by an acceptance is always the one shown next.
+    const same = !refused && this.held?.direction === direction && direction === 'down';
     this.held = {
       direction,
       from: this.last.value,
