@@ -1,6 +1,6 @@
 {
   "name": "gladys-apsystems",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "APsystems EZ1 micro-inverters (local API) and ECU gateways (ECU-B, ECU-R, ECU-C, local port 8899) for Gladys Assistant: live production per panel, daily and lifetime energy, power limit and on/off on the EZ1, alarms, scene triggers and a dashboard widget.",
   "type": "module",

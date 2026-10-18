@@ -6,8 +6,8 @@
     "en": "Unofficial connector: APsystems EZ1 micro-inverters and ECU gateways, live solar production.",
     "fr": "Connecteur non officiel : micro-onduleurs APsystems EZ1 et passerelles ECU, production solaire."
   },
-  "version": "0.1.2",
-  "docker_image": "ghcr.io/lm1lc3n7/gladys-apsystems:0.1.2",
+  "version": "0.1.3",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-apsystems:0.1.3",
   "gladys_version": ">=5.1.0",
   "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-apsystems/main/cover.png",
   "categories": ["energy"],
