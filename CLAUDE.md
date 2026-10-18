@@ -85,7 +85,7 @@ test/helpers/       fake EZ1 inverters (fetch, firmware variants, sleep),
 - The night: the EZ1 is powered by its panels; without sun its Wi-Fi goes
   away (timeouts, unreachable host). Not an error.
 - Firmware 1.9.0 users reported a lifetime counter that went down: hence
-  `indexStep`.
+  the index guard (`src/guard.js`).
 
 ## What is known of the ECU local protocol
 
@@ -168,14 +168,19 @@ test/helpers/       fake EZ1 inverters (fetch, firmware variants, sleep),
   our own**:
   only a user command or a scene writes it, and not when the inverter
   already has that value (read first). No configured "default limit".
-- **The lifetime index never jumps down then up** (`indexStep`): a lower
-  value is published after 3 readings in a row, so a glitch is never counted
-  as production by the core.
+- **The lifetime index is guarded** (`src/guard.js`, the rules of
+  gladys-p1-monitor, EZ1 and ECU alike): never 0 nor a missing value; a rise
+  within 1.5 x the EZ1 max power (2 kW per ECU inverter, 80 inverters when
+  unknown) over two intervals at least passes; a fall or a bigger jump is
+  held, shown in the status and the test button, and taken only by the
+  `accept_index` button, in its direction. Never confirmed by repetition
+  nor by time.
 - **Built blind**: every endpoint name lives in `src/ez1.js`, every field
   name in `src/model.js`, so a user report fixes one place. `TODO.md` lists
   what a tester must confirm.
-- **Read-only rootfs**: write nothing on disk; the day counters live in
-  memory.
+- **Read-only rootfs**: write only `/data/state.json` (`src/store.js`,
+  atomic: temporary file then rename; validated and bounded when read): the
+  index guards and the ECU pace. The day counters live in memory.
 - **Versions belong to the Release workflow** (Actions → Release). Never edit
   `version` in `package.json` or in the manifest, nor the `docker_image` tag.
 - **Changelog**: every user-visible change adds a line under

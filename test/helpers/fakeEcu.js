@@ -135,7 +135,7 @@ export function installEcus(ecus) {
     await new Promise((resolve) => setImmediate(resolve));
     active -= 1;
     if (!ecu || ecu.down) {
-      throw new EcuError('network', 'ECONNREFUSED');
+      throw Object.assign(new EcuError('network', 'ECONNREFUSED'), { connectFailed: true });
     }
     if (payload === 'APS1100160001END\n') {
       const online = ecu.inverters.filter((i) => i.online).length;

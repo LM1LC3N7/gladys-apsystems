@@ -15,9 +15,14 @@
 
 import { createLogger } from '@gladysassistant/integration-sdk';
 import { normalizeConfig, parseHost } from './config.js';
+import { IndexGuard } from './guard.js';
+import { StateStore } from './store.js';
 import {
+  ACTIONS,
   AWAKE_POWER,
   DEFAULT_LIMITS,
+  ECU,
+  EZ1_INDEX_SLACK_KWH,
   LONG_SILENCE,
   MISSES_BEFORE_ASLEEP,
   PACING,
@@ -42,16 +47,7 @@ import { Ez1Client, LIMIT_VARIANTS } from './ez1.js';
 import { EcuGateways } from './gateways.js';
 import { Ez1Error } from './http.js';
 import { T } from './i18n.js';
-import {
-  alarmsOf,
-  dayEnergyStep,
-  deviceInfoOf,
-  indexStep,
-  limitOf,
-  num,
-  onOffOf,
-  outputOf,
-} from './model.js';
+import { alarmsOf, dayEnergyStep, deviceInfoOf, limitOf, num, onOffOf, outputOf } from './model.js';
 import { alarmEvent, productionEvent, productionStep, raisedAlarms } from './triggers.js';
 import { solarWidget } from './widget.js';
 
@@ -74,12 +70,22 @@ export class ApsystemsApp {
     clientFactory = (options) => new Ez1Client(options),
     ecuQueue,
     ecuClientFactory,
+    store,
   }) {
     this.gladys = gladys;
     this.logger = logger;
     this.now = now;
     this.timers = timers;
     this.clientFactory = clientFactory;
+    /** /data/state.json: the index guards and the ECU pace survive a restart. */
+    this.store = store ?? new StateStore({ logger });
+    this.stateLoaded = undefined;
+    this.savedGuards = new Map();
+    this.lastSaveAt = -Infinity;
+    this.saveDue = false;
+    /** "ez1:<serial>" | "ecu:<id>" -> IndexGuard (kept across restarts of the app). */
+    this.guards = new Map();
+    this.ecuRefreshing = undefined;
     /** The ECU gateways (src/gateways.js); their pacing survives a restart of the app. */
     this.gateways = new EcuGateways(this, {
       queue:
@@ -103,9 +109,128 @@ export class ApsystemsApp {
 
   // --- Lifecycle -------------------------------------------------------------
 
+  /** Read /data/state.json once per process. */
+  loadState() {
+    if (!this.stateLoaded) {
+      this.stateLoaded = this.store
+        .load({ now: this.now(), maxWait: Math.max(ECU.BACKOFF_MAX, 3_600_000) })
+        .then(({ guards, pacing }) => {
+          this.savedGuards = guards;
+          this.gateways.loadPacing(pacing);
+        })
+        .catch((err) => this.logger.warn(`State not loaded: ${err.message}`));
+    }
+    return this.stateLoaded;
+  }
+
+  /**
+   * Write /data/state.json: at once when `urgent` (a value held, an ECU
+   * reading), else at most every minute.
+   */
+  async persist({ urgent = false } = {}) {
+    const now = this.now();
+    if (!urgent && now - this.lastSaveAt < 60_000) {
+      this.saveDue = true;
+      return;
+    }
+    this.lastSaveAt = now;
+    this.saveDue = false;
+    const guards = new Map(
+      [...this.guards].filter(([, g]) => g.last).map(([key, g]) => [key, g.state()]),
+    );
+    await this.store.save({ guards, pacing: this.gateways.pacing });
+  }
+
+  /** The guard of an index, seeded from /data and from the value Gladys holds. */
+  guardFor(key, device) {
+    if (!this.guards.has(key)) {
+      const feature = (device?.features ?? []).find((f) =>
+        String(f.external_id).endsWith(`:${FEATURE.ENERGY_TOTAL}`),
+      );
+      const at = Date.parse(feature?.last_value_changed ?? '');
+      this.guards.set(
+        key,
+        new IndexGuard({
+          known: {
+            value: lastValueOf(device, FEATURE.ENERGY_TOTAL),
+            at: Number.isFinite(at) ? at : undefined,
+          },
+          saved: this.savedGuards.get(key),
+          now: this.now(),
+        }),
+      );
+    }
+    return this.guards.get(key);
+  }
+
+  /** The last index value published (or held by Gladys). */
+  indexValue(key, device) {
+    return this.guards.get(key)?.last?.value ?? lastValueOf(device, FEATURE.ENERGY_TOTAL);
+  }
+
+  /** One value through a guard; a hold that starts or ends is logged and saved at once. */
+  acceptIndexValue(name, guard, value, at, limits) {
+    const before = guard.held;
+    const accepted = guard.accept(value, at, limits);
+    const after = guard.held;
+    const changed =
+      Boolean(before) !== Boolean(after) ||
+      Boolean(
+        before && after && (before.first !== after.first || before.direction !== after.direction),
+      );
+    if (changed) {
+      if (after) {
+        this.logger.warn(
+          `${name}: lifetime energy ${after.from} -> ${after.first} kWh held back (button "${ACTIONS.ACCEPT_INDEX}")`,
+        );
+      } else {
+        this.logger.info(`${name}: lifetime energy back to normal`);
+      }
+    }
+    if (changed || accepted) {
+      this.persist({ urgent: changed }).catch(() => {});
+    }
+    return accepted;
+  }
+
+  /** The held values of the created devices, for the status and the test button. */
+  heldTexts() {
+    const out = [];
+    const add = (key, device) => {
+      // The guard of a created device, seeded from /data even before its first reading.
+      const held = device ? this.guardFor(key, device).held : undefined;
+      if (held) {
+        out.push(T.held(device.name, held));
+      }
+    };
+    for (const i of this.createdInverters()) {
+      add(`ez1:${i.serial}`, i.device);
+    }
+    for (const e of this.gateways.createdEcus()) {
+      add(`ecu:${e.id}`, e.device);
+    }
+    return out;
+  }
+
+  /** The "accept the lifetime energy" button: the next reading in the held direction is taken. */
+  async acceptIndex() {
+    const names = [];
+    for (const [key, guard] of this.guards) {
+      if (guard.acceptHeld()) {
+        names.push(key);
+      }
+    }
+    await this.persist({ urgent: true });
+    return names.length > 0 ? T.accepted(names.length) : T.nothingHeld;
+  }
+
   async start(raw = {}) {
     this.stop();
     const generation = ++this.generation;
+    await this.loadState();
+    if (generation !== this.generation) {
+      return;
+    }
     this.config = normalizeConfig(raw);
     this.clients.clear();
     this.inverters.clear();
@@ -130,22 +255,46 @@ export class ApsystemsApp {
     }
     try {
       await this.probeHosts({ force: true });
-      await this.refresh();
+      await Promise.all([this.refresh(), this.refreshEcus()]);
     } catch (err) {
       this.logger.warn(`Start: ${err.message}`);
     }
     if (generation !== this.generation) {
       return;
     }
+    // One tick for both, but the EZ1 reading never waits for an ECU reading
+    // (each has its own guard against overlapping).
     this.refreshTimer = this.timers.setInterval(
-      () => this.refresh().catch((err) => this.logger.warn(`Refresh: ${err.message}`)),
+      () =>
+        Promise.all([
+          this.refresh().catch((err) => this.logger.warn(`Refresh: ${err.message}`)),
+          this.refreshEcus(),
+        ]),
       this.config.pollInterval * 1000,
     );
   }
 
-  /** The user saved the configuration: that save accepts an ECU index jump held back. */
+  /** The ECUs that are due, apart from the EZ1 loop. */
+  refreshEcus() {
+    if (!this.ecuRefreshing) {
+      this.ecuRefreshing = this.gateways
+        .refresh()
+        .then(async (read) => {
+          if (read > 0) {
+            await this.updateStatus();
+            this.gladys.requestWidgetRefresh(WIDGETS.SOLAR);
+          }
+        })
+        .catch((err) => this.logger.warn(`ECU refresh: ${err.message}`))
+        .finally(() => {
+          this.ecuRefreshing = undefined;
+        });
+    }
+    return this.ecuRefreshing;
+  }
+
+  /** The user saved the configuration (no longer accepts a held index: see accept_index). */
   configUpdated(raw) {
-    this.gateways.acceptHeldJumps();
     return this.start(raw);
   }
 
@@ -195,6 +344,11 @@ export class ApsystemsApp {
     const parts = [this.ez1StatusPart(), this.gateways.statusPart()].filter(Boolean);
     const connected = parts.length > 0 && parts.every((p) => p.connected);
     let message = parts.length > 0 ? joinTexts(...parts.map((p) => p.message)) : T.noHost;
+    // A value held back stays visible (the status stays green: nothing is broken).
+    const held = this.heldTexts();
+    if (held.length > 0) {
+      message = joinTexts(message, ...held);
+    }
     if (this.config.invalidHosts.length > 0) {
       message = joinTexts(message, T.invalidHosts(this.config.invalidHosts));
     }
@@ -235,7 +389,6 @@ export class ApsystemsApp {
         alarmsAt: 0,
         output: undefined,
         day: undefined,
-        index: undefined,
         production: undefined,
         status: 'waiting',
         misses: 0,
@@ -275,10 +428,6 @@ export class ApsystemsApp {
           inverter.limitSupported = true;
         }
         inverter.boundsFromParams = { min: num(params.min_power), max: num(params.max_power) };
-      }
-      if (!inverter.index) {
-        const last = lastValueOf(device, FEATURE.ENERGY_TOTAL);
-        inverter.index = last === undefined ? undefined : { value: last, lower: 0 };
       }
       return inverter;
     });
@@ -398,8 +547,10 @@ export class ApsystemsApp {
     const devices = [...ez1, ...this.gateways.devices()].map((d) =>
       keepCreatedFeatures(d, created.get(d.external_id)),
     );
-    this.gateways.publishedSignature = this.gateways.signature();
+    const signature = this.gateways.signature();
     await this.gladys.publishDiscoveredDevices(devices);
+    // Only once Gladys has it: a failed publication is tried again at the next reading.
+    this.gateways.publishedSignature = signature;
   }
 
   /** The Discovery screen asked for a scan: ask every address now. */
@@ -419,15 +570,12 @@ export class ApsystemsApp {
   }
 
   async doRefresh() {
-    await Promise.all([
-      (async () => {
-        await this.probeHosts();
-        // Different inverters in parallel: each one has its own queue.
-        await Promise.all(this.createdInverters().map((i) => this.refreshInverter(i)));
-      })(),
-      // The ECUs at their own pace (they skip the ticks before they are due).
-      this.gateways.refresh(),
-    ]);
+    await this.probeHosts();
+    // Different inverters in parallel: each one has its own queue.
+    await Promise.all(this.createdInverters().map((i) => this.refreshInverter(i)));
+    if (this.saveDue) {
+      await this.persist();
+    }
     await this.updateStatus();
     this.gladys.requestWidgetRefresh(WIDGETS.SOLAR);
   }
@@ -498,8 +646,13 @@ export class ApsystemsApp {
     const events = [];
     await this.readSlowData(inverter, client, events);
     inverter.day = dayEnergyStep(inverter.day, output.energy, now);
-    const index = indexStep(inverter.index, output.lifetime);
-    inverter.index = index.state;
+    const guard = this.guardFor(`ez1:${inverter.serial}`, inverter.device);
+    const publishIndex = this.acceptIndexValue(inverter.device.name, guard, output.lifetime, now, {
+      // 1.5 x the inverter's maximum power, over two intervals at least.
+      maxKw: (1.5 * this.bounds(inverter).max) / 1000,
+      slack: EZ1_INDEX_SLACK_KWH,
+      minHours: (2 * this.config.pollInterval) / 3600,
+    });
     inverter.status = inverter.on === false ? 'off' : output.power > 0 ? 'producing' : 'idle';
     events.push(...this.productionEvents(inverter, output.power, now));
     await this.publish(
@@ -509,7 +662,7 @@ export class ApsystemsApp {
         power: output.power,
         inputs: output.inputs.map((i) => i.power),
         energyToday: inverter.day?.value,
-        energyTotal: index.publish,
+        energyTotal: publishIndex ? output.lifetime : undefined,
         limit: inverter.limitSupported === false ? undefined : inverter.limit,
         on: inverter.switchSupported ? inverter.on : undefined,
         alarms: inverter.alarms,
@@ -780,7 +933,7 @@ export class ApsystemsApp {
       ...inverters.map((i) => ({
         power: AWAKE.has(i.status) ? i.output?.power : 0,
         energyToday: i.day?.value ?? lastValueOf(i.device, FEATURE.ENERGY_TODAY),
-        energyTotal: i.index?.value,
+        energyTotal: this.indexValue(`ez1:${i.serial}`, i.device),
         status: i.status,
       })),
       ...gateways,
@@ -815,7 +968,7 @@ export class ApsystemsApp {
         ? i.output.inputs.map((input) => input.power)
         : Array.from({ length: i.inputs }, () => 0),
       energyToday: i.day?.value ?? lastValueOf(i.device, FEATURE.ENERGY_TODAY) ?? null,
-      energyTotal: i.index?.value ?? null,
+      energyTotal: this.indexValue(`ez1:${i.serial}`, i.device) ?? null,
       limit: i.limitSupported === false ? null : (i.limit ?? null),
       alarms: i.alarms,
     }));
@@ -848,7 +1001,7 @@ export class ApsystemsApp {
         }
       }),
     );
-    lines.push(...(await this.gateways.testLines()), ...invalid);
+    lines.push(...(await this.gateways.testLines()), ...this.heldTexts(), ...invalid);
     return { en: lines.map((l) => l.en).join('\n'), fr: lines.map((l) => l.fr).join('\n') };
   }
 }

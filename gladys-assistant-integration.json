@@ -93,8 +93,17 @@
       "timeout_seconds": 60,
       "label": { "en": "Test the inverters", "fr": "Tester les onduleurs" },
       "description": {
-        "en": "Asks each address above who answers: model, serial, firmware, power now. At night the EZ1s sleep: test by day. An ECU read less than an interval ago is reported from that reading, not asked again.",
-        "fr": "Demande à chaque adresse ci-dessus qui répond : modèle, numéro de série, firmware, puissance actuelle. La nuit les EZ1 dorment : testez de jour. Un ECU lu il y a moins d'un intervalle est décrit d'après cette lecture, sans le réinterroger."
+        "en": "Asks each address above who answers: model, serial, firmware, power now. At night the EZ1s sleep: test by day. An ECU is never asked before its next reading is due: it is reported from its last one. A lifetime energy value held back is shown too.",
+        "fr": "Demande à chaque adresse ci-dessus qui répond : modèle, numéro de série, firmware, puissance actuelle. La nuit les EZ1 dorment : testez de jour. Un ECU n'est jamais interrogé avant sa prochaine lecture prévue : il est décrit d'après la dernière. Une valeur d'énergie totale retenue est aussi affichée."
+      }
+    },
+    {
+      "key": "accept_index",
+      "timeout_seconds": 30,
+      "label": { "en": "Accept the lifetime energy", "fr": "Accepter l'énergie totale" },
+      "description": {
+        "en": "Only when the status says a lifetime energy value is held back (a jump or a fall the inverter could not have made): the next reading in that direction is taken. A jump taken is counted once as production; a fall counts nothing.",
+        "fr": "Seulement quand le statut indique qu'une valeur d'énergie totale est retenue (un saut ou une baisse impossible pour l'onduleur) : la lecture suivante dans ce sens est prise. Un saut accepté est compté une fois comme production ; une baisse ne compte rien."
       }
     }
   ],

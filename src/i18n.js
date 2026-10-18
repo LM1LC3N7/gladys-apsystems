@@ -3,6 +3,7 @@
 // -----------------------------------------------------------------------------
 
 const plural = (n, one, many) => (n === 1 ? one : many);
+const round3 = (value) => Number(value.toFixed(3));
 
 /** The state of an inverter, as a label: see `statusOf` in src/app.js. */
 export const STATUS = {
@@ -23,6 +24,24 @@ export const T = {
     en: `${positions.length === 1 ? 'Entry' : 'Entries'} ${positions.join(', ')} of the ECU address list ${positions.length === 1 ? 'is' : 'are'} not valid: ignored.`,
     fr: `${positions.length === 1 ? 'L’entrée' : 'Les entrées'} ${positions.join(', ')} de la liste d’adresses ECU ${positions.length === 1 ? 'n’est pas valide : ignorée' : 'ne sont pas valides : ignorées'}.`,
   }),
+  held: (name, held) =>
+    held.direction === 'up'
+      ? {
+          en: `${name}: the lifetime energy jumped from ${held.from} to ${held.first} kWh, held back. If it is real, press "Accept the lifetime energy": this difference (${round3(held.first - held.from)} kWh) will be counted as production.`,
+          fr: `${name} : l’énergie totale a sauté de ${held.from} à ${held.first} kWh, valeur retenue. Si elle est réelle, cliquez sur « Accepter l’énergie totale » : cette différence (${round3(held.first - held.from)} kWh) sera comptée comme production.`,
+        }
+      : {
+          en: `${name}: the lifetime energy fell from ${held.from} to ${held.first} kWh, held back. If the counter was really reset, press "Accept the lifetime energy" (a fall counts nothing).`,
+          fr: `${name} : l’énergie totale est tombée de ${held.from} à ${held.first} kWh, valeur retenue. Si le compteur a vraiment été remis à zéro, cliquez sur « Accepter l’énergie totale » (une baisse ne compte rien).`,
+        },
+  accepted: (n) => ({
+    en: `${n} lifetime energy ${plural(n, 'value', 'values')} held back will be taken at the next reading.`,
+    fr: `${n} valeur${plural(n, '', 's')} d’énergie totale retenue${plural(n, '', 's')} ${plural(n, 'sera prise', 'seront prises')} à la prochaine lecture.`,
+  }),
+  nothingHeld: {
+    en: 'No lifetime energy value is held back: nothing to accept.',
+    fr: 'Aucune valeur d’énergie totale n’est retenue : rien à accepter.',
+  },
   ecu: {
     waiting: {
       en: 'ECU gateway: waiting for its first answer.',
@@ -72,8 +91,8 @@ export const T = {
   }),
   test: {
     answers: (key, info, output) => ({
-      en: `${key}: ${info.model} ${info.serial} (firmware ${info.devVer ?? '?'}), ${output.power} W now, ${output.lifetime} kWh lifetime.`,
-      fr: `${key} : ${info.model} ${info.serial} (firmware ${info.devVer ?? '?'}), ${output.power} W en ce moment, ${output.lifetime} kWh au total.`,
+      en: `${key}: ${info.model} ${info.serial} (firmware ${info.devVer ?? '?'}), ${output.power} W now, ${output.lifetime ?? '?'} kWh lifetime.`,
+      fr: `${key} : ${info.model} ${info.serial} (firmware ${info.devVer ?? '?'}), ${output.power} W en ce moment, ${output.lifetime ?? '?'} kWh au total.`,
     }),
     silent: (key, message) => ({
       en: `${key}: no answer (${message}). Normal at night; by day check the address and that local mode is on (AP EasyPower app, "Continuous").`,

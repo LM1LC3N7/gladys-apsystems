@@ -21,18 +21,11 @@ import {
   parseExternalId,
   uuidOf,
 } from '../src/devices.js';
-import {
-  alarmsOf,
-  dayEnergyStep,
-  deviceInfoOf,
-  indexStep,
-  limitOf,
-  onOffOf,
-  outputOf,
-} from '../src/model.js';
+import { alarmsOf, dayEnergyStep, deviceInfoOf, limitOf, onOffOf, outputOf } from '../src/model.js';
 import { alarmEvent, productionEvent, productionStep, raisedAlarms } from '../src/triggers.js';
 import { solarWidget } from '../src/widget.js';
 import { fixture } from './helpers/fakeEz1.js';
+import { IndexGuard } from '../src/guard.js';
 
 const NOON = Date.parse('2026-06-15T12:00:00Z');
 const MIN = 60_000;
@@ -124,20 +117,32 @@ test('energy of the day: a restart adds up, a new solar day starts over', () => 
   assert.equal(dayEnergyStep(late, null, NOON), late, 'no counter: unchanged');
 });
 
-test('lifetime index: a single low reading is ignored, a lasting one is confirmed', () => {
-  let step = indexStep(undefined, 810.4);
-  assert.equal(step.publish, 810.4);
-  step = indexStep(step.state, 0);
-  assert.equal(step.publish, undefined, 'a 0 glitch would count as production once it comes back');
-  step = indexStep(step.state, 810.5);
-  assert.equal(step.publish, 810.5);
-  for (const value of [2.1, 2.2]) {
-    step = indexStep(step.state, value);
-    assert.equal(step.publish, undefined);
+test('EZ1 lifetime index: a low reading or a reset is held, never confirmed by repetition', () => {
+  // The EZ1 limits: 1.5 x 800 W, 0.2 kWh, two 30 s readings at least.
+  const limits = { maxKw: 1.2, slack: 0.2, minHours: 60 / 3600 };
+  const guard = new IndexGuard({ now: NOON });
+  assert.equal(guard.accept(0, NOON, limits), false, 'never 0, first reading included');
+  assert.equal(guard.accept(810.4, NOON, limits), true);
+  for (let i = 0; i < 3; i += 1) {
+    assert.equal(guard.accept(0, NOON + i * 30_000, limits), false, `a 0, reading ${i + 1}`);
   }
-  step = indexStep(step.state, 2.3);
-  assert.equal(step.publish, 2.3, 'a firmware reset of the counter, three readings in a row');
-  assert.equal(indexStep(step.state, null).publish, undefined);
+  assert.equal(guard.accept(810.5, NOON + 2 * MIN, limits), true);
+  for (const value of [2.1, 2.2, 2.3, 2.4]) {
+    assert.equal(guard.accept(value, NOON + 3 * MIN, limits), false, 'a reset is held');
+  }
+  assert.equal(guard.held.direction, 'down');
+  guard.acceptHeld();
+  assert.equal(guard.accept(2.5, NOON + 4 * MIN, limits), true, 'taken once the user accepts');
+  assert.equal(guard.accept(undefined, NOON, limits), false);
+  assert.equal(guard.accept(null, NOON, limits), false);
+});
+
+test('output data: a counter missing or not a number gives no lifetime, never 0', () => {
+  const missing = outputOf({ p1: 10, e1: 0.1, te1: 400, p2: 12, e2: 0.2 });
+  assert.equal(missing.lifetime, null);
+  assert.equal(missing.energy, 0.3);
+  assert.equal(outputOf({ p1: 1, e1: 'x', te1: 1 }).energy, null);
+  assert.equal(outputOf({ p1: 1, e1: 1, te1: 'NaN' }).lifetime, null);
 });
 
 test('the configuration', () => {

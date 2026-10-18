@@ -56,9 +56,11 @@
       DS3-L type code ("01" or "04") and its model prefix, and that
       `today_energy` resets at the ECU's midnight.
 - [ ] Gladys hands the devices with `last_value_changed` on each feature:
-      the ECU index guard dates its reference with it after a restart (else
-      with the start time, which holds a large rise until a configuration
-      save). Check on a real Gladys.
+      the index guards date the Gladys value with it (else 24 hours back, a
+      day of margin for the first reading after a restart). Check on a real
+      Gladys.
+- [ ] The type 05 (QT2): read as a 4-channel, 3-phase inverter like the
+      reference does; to be confirmed by a QT2 owner.
 - [ ] The DS3 voltage: the reference reads two voltages and shows the first
       (one AC voltage); confirm it is the grid voltage.
 
@@ -76,34 +78,55 @@
   queries (ksheumaker waited 5 s per query), 2 connection attempts per
   query, 10 s per query. After a failure: wait the interval, then twice as
   long each time, up to 30 minutes (or the interval if longer); red after
-  3 failed readings. The pacing state survives a reconnection to Gladys
-  (`start()`), so a flapping link never bursts queries. The test button
-  reuses a reading younger than the interval.
+  3 failed readings. A connection that could not be opened is tried once
+  more; a query that reached the ECU is never sent twice. The pace of each
+  address lives in its own bounded table (50 addresses), kept across a
+  reconnection to Gladys (`start()`) and saved in `/data/state.json`
+  (`nextAt` capped when read back), so neither a flapping link nor a
+  restart bursts queries. An address no longer configured nor used by a
+  created ECU is forgotten. The test button reads an ECU only when it is
+  due (`now >= nextAt`), every address in parallel. The ECUs are refreshed
+  apart from the EZ1 loop (the EZ1 tick never waits for an ECU).
 - **Not sent**: the signal-strength query (0030) of the reference, one more
   connection for a value not exposed; the ECU-C meter data (HTTP). Ideas
   below.
 - **Unknown inverter type**: the reference skips 9 bytes and goes on; here
   the list stops at that inverter (it keeps only `online`), since the next
   offsets would be guesses that invent devices.
-- **ECU index guard** (`ecuIndexStep`): never 0; a fall published after 3
-  readings in a row never decreasing; a rise larger than 2 kW per inverter
-  the ECU knows over the time since the last published value (+0.5 kWh) is
-  held, never confirmed by repetition nor time, accepted only by a save of
-  the configuration (`app.configUpdated`). In memory only (read-only
-  rootfs): after a restart the reference is the value Gladys holds.
+- **Index guard** (`src/guard.js`, shared by the EZ1 and the ECU, the
+  rules of gladys-p1-monitor 44795c4): never 0 nor a missing value, first
+  reading included; a rise passes when plausible since the last value
+  published, over two intervals at least: EZ1 1.5 x its max power + 0.2 kWh,
+  ECU 2 kW x max(inverters, inverters listed, 1) + 0.5 kWh, 80 inverters
+  when the ECU says nothing. A fall or a bigger jump is held (never by
+  repetition nor time), shown in the status (green) and the test button
+  with both values, and taken only by the `accept_index` button, in its
+  direction only (a fall taken counts nothing, a jump taken is counted
+  once). A save of the configuration no longer accepts anything. The guard
+  state ({ last value, date, held }) is saved in `/data/state.json`; the
+  Gladys value is dated with `last_value_changed` (else 24 hours back).
+- **Stale micro-inverters**: a created micro-inverter missing from the last
+  valid inverter frame of its ECU, or seen more than 2 intervals ago, is
+  published offline at 0 W and shown asleep (waiting if never seen).
+- **Best effort**: the firmware and the time zone of the ECU frame are read
+  at best (a frame cut there keeps its figures); an inverter frame too short
+  for its header is an empty list; an inverter type that is not two letters
+  or digits is unknown.
 - **Triggers and widget**: the ECU fires `production_started` /
   `production_stopped` on its total power (same hysteresis; with a reading
   every 5 minutes, "started" comes at the second reading). The
   micro-inverters fire nothing (the ECU already does) and are not summed in
-  the widget totals nor in `get_production` (no double count); picked
-  alone, they show their power and panels.
+  the widget totals nor in `get_production` (no double count), unless
+  their ECU is not a created device; picked alone, they show their power
+  and panels (an unknown type, without a power feature, shows no power
+  tile). States go to Gladys in batches of 100 at most.
 - **External ids**: `ecu:<ECU id>` and `ecu_inverter:<inverter id>`, the
   inverter's own id so it survives an ECU replacement. The EZ1 keys and
   external ids are untouched.
-- **The EZ1 index rule (`indexStep`) is not changed** so that EZ1 users see
-  no change: it still publishes a lower value (0 included) after 3
-  readings, and a jump back up. To align with the ECU guard in a later
-  version (to review).
+- **The EZ1 index uses the same guard** (it replaced `indexStep`, which
+  published a lower value, 0 included, after 3 readings): no key, external
+  id or feature changes. `outputOf` gives no lifetime (null) when a
+  `te<n>` is missing or not a number, and no day energy for an `e<n>`.
 
 ## Ideas
 

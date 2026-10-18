@@ -33,14 +33,21 @@ function alarmLabel(id) {
  * One device: `inverter` is { kind, name, deviceId, status, power, inputs,
  * energyToday, energyTotal, limit, alarms } and, for an ECU (`kind`
  * 'ecu'), online and inverters; for a micro-inverter behind an ECU
- * ('micro'), temperature and no energy tiles (the ECU counts the energy).
+ * ('micro'), temperature and no energy tiles (the ECU counts the energy),
+ * and no power tile either for a type without a power feature (`hasPower`
+ * false).
  */
 function singleWidget(inverter, language) {
   const feature = (key) => ids.feature(inverter.deviceId, key);
-  const components = [
-    { type: 'text', text: inverter.name.slice(0, 40), variant: 'heading' },
-    { type: 'value', label: T.widget.power, device_feature: feature(FEATURE.POWER), icon: 'sun' },
-  ];
+  const components = [{ type: 'text', text: inverter.name.slice(0, 40), variant: 'heading' }];
+  if (inverter.hasPower !== false) {
+    components.push({
+      type: 'value',
+      label: T.widget.power,
+      device_feature: feature(FEATURE.POWER),
+      icon: 'sun',
+    });
+  }
   if (inverter.kind !== 'micro') {
     components.push(
       {
@@ -179,8 +186,8 @@ export function solarWidget({ inverters, deviceId, language = 'en' }) {
       return singleWidget(inverter, language);
     }
   }
-  // The micro-inverters behind an ECU are already in its totals.
-  const rows = inverters.filter((i) => i.kind !== 'micro');
+  // The micro-inverters behind a created ECU are already in its totals.
+  const rows = inverters.filter((i) => i.kind !== 'micro' || i.alone);
   return rows.length > 0
     ? totalWidget(rows, language)
     : {

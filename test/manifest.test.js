@@ -118,6 +118,7 @@ test('the keys of the manifest are the keys of the code', () => {
     assert.ok(index.includes(`onSceneAction(SCENE_ACTIONS.${name}`), name);
   }
   assert.ok(index.includes('onAction(ACTIONS.TEST'));
+  assert.ok(index.includes('onAction(ACTIONS.ACCEPT_INDEX'));
   // The device select is named `inverter` everywhere (shared with gladys-hoymiles).
   assert.equal(manifest.widgets[0].settings[0].key, 'inverter');
   assert.ok(app.includes('settings.inverter'));

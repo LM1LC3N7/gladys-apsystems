@@ -36,7 +36,7 @@ import {
   parseEcuFrame,
   parseInverterFrame,
 } from '../src/ecu-protocol.js';
-import { ecuIndexStep } from '../src/model.js';
+import { IndexGuard } from '../src/guard.js';
 import { ecuFrame, frame, inverterFrame } from './helpers/fakeEcu.js';
 
 const HOUR = 3_600_000;
@@ -82,17 +82,27 @@ test('the ECU frame is checked: length, signatures, command, id, bounds', () => 
   notAps.write('XPS', 0, 'latin1');
   assert.throws(() => checkFrame(notAps), { message: /signature/ });
   assert.throws(() => parseEcuFrame(inverterFrame([])), { message: /expected an ECU frame/ });
-  // A frame that ends before the firmware it announces: no read past the end.
-  const short = frame(
-    '0001',
-    Buffer.concat([
-      Buffer.from('216300012345' + '01', 'latin1'),
-      Buffer.alloc(39),
-      Buffer.from('099ab'),
-    ]),
+  // A frame that ends before the firmware it announces: no read past the
+  // end, the figures kept, the firmware and the time zone left unknown.
+  const cut = Buffer.concat([
+    Buffer.from('216300012345' + '01', 'latin1'),
+    Buffer.alloc(25),
+    Buffer.from('099ab'),
+  ]);
+  cut.writeUInt32BE(4560, 14); // the lifetime energy, at offset 27 of the frame
+  const short = parseEcuFrame(frame('0001', cut));
+  assert.deepEqual(
+    [short.lifetimeEnergy, short.firmware, short.timezone, short.inverters],
+    [456, null, null, 0],
   );
+  // An inverter frame too short for its header: no inverter, not an error.
+  assert.equal(parseInverterFrame(frame('0002', Buffer.from('0001'))).inverters.size, 0);
+  // A type that is not two letters or digits is unknown: the list stops there.
+  const odd = parseInverterFrame(inverterFrame([{ uid: '703000012345', type: '\u0001!' }]));
+  assert.deepEqual([odd.inverters.get('703000012345').type, odd.truncated], [null, false]);
+  // The figures themselves past the end: an error.
   assert.throws(
-    () => parseEcuFrame(short),
+    () => parseEcuFrame(frame('0001', Buffer.from('216300012345' + '01', 'latin1'))),
     (err) => err instanceof EcuError && err.code === 'protocol',
   );
   // An id that is not 12 letters or digits.
@@ -292,7 +302,7 @@ test('the client: a refused connection is tried again, the inverters failing kee
       calls.push(payload);
       if (refusals > 0) {
         refusals -= 1;
-        throw new EcuError('network', 'ECONNREFUSED');
+        throw Object.assign(new EcuError('network', 'ECONNREFUSED'), { connectFailed: true });
       }
       if (payload === ECU_QUERY) {
         return ecuFrame();
@@ -324,42 +334,74 @@ test('the client: a refused connection is tried again, the inverters failing kee
   assert.equal(calls.length, before + 1);
 });
 
-test('the ECU lifetime index: never 0, a fall confirmed, a jump held until the user accepts it', () => {
-  const limits = { maxKw: 2, slack: 0.5 };
-  let step = ecuIndexStep(undefined, 1000, NOON, limits);
-  assert.equal(step.publish, 1000);
-  // Plausible: 1.5 kWh in an hour with 2 kW.
-  step = ecuIndexStep(step.state, 1001.5, NOON + HOUR, limits);
-  assert.equal(step.publish, 1001.5);
-  // 0 (the firmware bug): never published.
-  step = ecuIndexStep(step.state, 0, NOON + HOUR + 5 * 60_000, limits);
-  assert.equal(step.publish, undefined);
-  // A jump: held, and NOT confirmed by repetition nor by time.
+test('the index guard: never 0, jumps and falls held, accepted only in their direction', () => {
+  const limits = { maxKw: 2, slack: 0.5, minHours: 0 };
+  const guard = new IndexGuard({ now: NOON });
+  assert.equal(guard.accept(0, NOON, limits), false, 'never 0, first reading included');
+  assert.equal(guard.accept(1000, NOON, limits), true);
+  assert.equal(guard.accept(1001.5, NOON + HOUR, limits), true, '1.5 kWh in an hour with 2 kW');
+  assert.equal(guard.accept(0, NOON + HOUR + 5 * 60_000, limits), false);
+  // A jump: held, NOT confirmed by repetition nor by time.
   let t = NOON + 2 * HOUR;
   for (let i = 0; i < 10; i += 1) {
-    step = ecuIndexStep(step.state, 20_000, t, limits);
-    assert.equal(step.publish, undefined, `repetition ${i}`);
+    assert.equal(guard.accept(20_000, t, limits), false, `repetition ${i}`);
     t += 5 * 60_000;
   }
-  step = ecuIndexStep(step.state, 25_000, t + 1000 * HOUR, limits);
-  assert.equal(step.publish, undefined, 'above the held jump, even much later');
-  // A plausible value below the jump goes through.
-  step = ecuIndexStep(step.state, 1002, t, limits);
-  assert.equal(step.publish, 1002);
-  // The jump again, then the user saves the configuration: taken once.
-  step = ecuIndexStep(step.state, 20_000, t + 60_000, limits);
-  assert.equal(step.publish, undefined);
-  step = ecuIndexStep({ ...step.state, accept: true }, 20_001, t + 120_000, limits);
-  assert.equal(step.publish, 20_001);
-  assert.equal(step.state.accept, undefined, 'the acceptance is used up');
-  // A fall: three lower readings in a row, never decreasing.
-  let fall = ecuIndexStep(step.state, 10, t + HOUR, limits);
-  assert.equal(fall.publish, undefined);
-  fall = ecuIndexStep(fall.state, 9, t + HOUR, limits);
-  assert.equal(fall.publish, undefined, 'decreasing: counted again from 1');
-  fall = ecuIndexStep(fall.state, 9.1, t + HOUR, limits);
-  fall = ecuIndexStep(fall.state, 9.2, t + HOUR, limits);
-  assert.equal(fall.publish, 9.2);
+  assert.equal(guard.accept(25_000, t + 1000 * HOUR, limits), false, 'above it, even much later');
+  assert.deepEqual(
+    [guard.held.direction, guard.held.from, guard.held.first],
+    ['up', 1001.5, 20_000],
+  );
+  // A plausible value below the jump goes through and ends the hold.
+  assert.equal(guard.accept(1002, t, limits), true);
+  assert.equal(guard.held, undefined);
+  // The jump again; the user accepts it: taken once.
+  assert.equal(guard.accept(20_000, t + 60_000, limits), false);
+  assert.equal(guard.acceptHeld(), true);
+  assert.equal(guard.accept(20_001, t + 120_000, limits), true);
+  assert.equal(guard.acceptHeld(), false, 'nothing held any more');
+});
+
+test('a fall 5000 -> 4000, then back to 5000.x: no fictitious kWh', () => {
+  const limits = { maxKw: 2, slack: 0.5, minHours: 0 };
+  const guard = new IndexGuard({ now: NOON });
+  const published = [];
+  const read = (value, at) => {
+    if (guard.accept(value, at, limits)) {
+      published.push(value);
+    }
+  };
+  read(5000, NOON);
+  for (let i = 1; i <= 12; i += 1) {
+    read(4000, NOON + i * 5 * 60_000); // an hour of a low counter: still held
+  }
+  assert.equal(guard.held.direction, 'down');
+  read(5000.4, NOON + 2 * HOUR);
+  assert.deepEqual(published, [5000, 5000.4]);
+  const counted = published.slice(1).reduce((sum, v, i) => sum + Math.max(0, v - published[i]), 0);
+  assert.ok(Math.abs(counted - 0.4) < 1e-9, 'only the real 0.4 kWh');
+  // Accepting a fall takes the next LOWER value only; a jump stays held.
+  read(4000, NOON + 3 * HOUR);
+  guard.acceptHeld();
+  read(9000, NOON + 3 * HOUR + 60_000);
+  assert.equal(published.at(-1), 5000.4, 'a jump is not taken by a fall accepted');
+  assert.equal(guard.held.direction, 'up');
+});
+
+test('the margin: two intervals at least, a day for a reference without a date', () => {
+  const limits = { maxKw: 2, slack: 0.5, minHours: (2 * 300) / 3600 };
+  const guard = new IndexGuard({ known: { value: 1000, at: NOON }, now: NOON });
+  // 0.8 kWh one second later: within 2 kW x 10 minutes + 0.5.
+  assert.equal(guard.accept(1000.8, NOON + 1000, limits), true);
+  const undated = new IndexGuard({ known: { value: 1000 }, now: NOON });
+  assert.equal(undated.accept(1040, NOON, limits), true, 'a day of margin after a restart');
+  const dated = new IndexGuard({ known: { value: 1000, at: NOON - 60_000 }, now: NOON });
+  assert.equal(dated.accept(1040, NOON, limits), false, '40 kWh in a minute: held');
+  // What /data kept wins over an older Gladys value, its hold included.
+  const saved = { last: { value: 1100, at: NOON - 60_000 }, held: dated.state().held };
+  const restored = new IndexGuard({ known: { value: 1000, at: NOON - HOUR }, saved, now: NOON });
+  assert.equal(restored.last.value, 1100);
+  assert.equal(restored.held.direction, 'up');
 });
 
 test('the configuration: ECU addresses on port 8899, an interval of 300 s at least', () => {

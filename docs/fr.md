@@ -69,9 +69,24 @@ est additionné, pas perdu.
 La fonctionnalité **énergie totale** est un index de production : Gladys le
 transforme en production par tranche de 30 minutes (la fonctionnalité
 « Lifetime energy (30-minute production) », que Gladys remplit elle-même)
-pour ses écrans d'énergie. L'index ne fait jamais de chute suivie d'une
-remontée : une lecture basse isolée (un raté au réveil) est ignorée, pour
-qu'elle ne soit jamais comptée deux fois comme production.
+pour ses écrans d'énergie. Gladys compte chaque hausse d'un index en
+entier : l'intégration le protège donc (EZ1 comme ECU) :
+
+- un 0 (ou une valeur manquante) n'est jamais publié ;
+- une hausse est publiée quand les onduleurs ont pu la produire : au plus
+  1,5 fois la puissance maximale d'un EZ1 (2 kW par onduleur derrière un
+  ECU) depuis la dernière valeur publiée, sur deux intervalles au moins,
+  plus une petite marge ;
+- une baisse, ou un saut plus grand, est **retenu** : jamais accepté par
+  simple répétition ni avec le temps. Le statut de connexion (qui reste
+  vert) et le bouton **Tester les onduleurs** l'affichent, avec les deux
+  valeurs. S'il est réel (compteur remis à zéro, onduleur remplacé),
+  cliquez sur **Accepter l'énergie totale** : la lecture suivante dans ce
+  sens est prise. Un saut accepté est compté une fois comme production ;
+  une baisse ne compte rien. Une valeur revenue à la normale (c'était un
+  raté) lève la retenue d'elle-même ;
+- la dernière valeur publiée et ce qui est retenu sont gardés dans
+  `/data/state.json` : un redémarrage ne change rien.
 
 ## Limite de puissance et marche/arrêt
 
@@ -124,9 +139,10 @@ Assistant), une seule connexion à la fois pour tous vos ECU, avec une pause
 de 5 secondes entre deux requêtes ; une lecture compte deux requêtes
 (l'ECU, puis ses onduleurs). Après un échec, l'essai suivant attend
 5 minutes, puis 10, puis 20, jusqu'à 30 minutes : jamais avant
-l'intervalle, même quand le lien avec Gladys se coupe et revient. Le bouton
-de test décrit un ECU lu il y a moins d'un intervalle d'après cette lecture
-au lieu de le réinterroger. Après trois lectures ratées de suite, le statut
+l'intervalle, même quand le lien avec Gladys se coupe et revient ou que
+l'intégration redémarre (le rythme est gardé dans `/data/state.json`). Le
+bouton de test n'interroge jamais un ECU avant sa prochaine lecture prévue :
+il décrit la dernière. Après trois lectures ratées de suite, le statut
 passe au rouge : un ECU bloqué repart en général après l'avoir débranché
 une minute.
 
@@ -134,7 +150,8 @@ une minute.
 ses micro-onduleurs passent hors ligne avec le soleil. C'est l'état **en
 veille (nuit)**, jamais une erreur : la puissance de l'ECU passe à 0 W,
 chaque micro-onduleur est hors ligne à 0 W, le reste garde sa dernière
-valeur.
+valeur. Un micro-onduleur que l'ECU ne liste plus, ou dont il n'a rien dit
+depuis deux intervalles, est lui aussi hors ligne à 0 W.
 
 **Les valeurs** sont celles de l'ECU : sa puissance actuelle, son énergie
 du jour, son énergie totale, le nombre d'onduleurs en ligne ; par
@@ -143,14 +160,13 @@ panneau, la tension AC, la fréquence du réseau, la température quand il est
 en ligne). Un onduleur d'un type que la référence ne connaît pas n'a que
 **en ligne**, et les onduleurs listés après lui ne sont pas lus (deviner
 inventerait des onduleurs). L'**énergie totale** de l'ECU est l'index de
-production du suivi énergétique de Gladys, avec des règles strictes : un 0
-n'est jamais publié (certains firmwares d'ECU répondent 0 de temps en
-temps), une baisse n'est publiée qu'une fois confirmée par trois lectures,
-et un saut vers le haut plus grand que ce que les onduleurs ont pu produire
-est **retenu** : jamais accepté par simple répétition, seulement quand vous
-**enregistrez la configuration** (la lecture suivante est alors prise). Les
-micro-onduleurs n'ont pas de compteur d'énergie : l'ECU compte l'énergie,
-une seule fois.
+production du suivi énergétique de Gladys, protégé comme décrit dans
+[Suivi de l'énergie](#suivi-de-lénergie) (certains firmwares d'ECU
+répondent 0 de temps en temps ; 80 onduleurs sont supposés quand l'ECU ne
+dit pas combien il en a). Les micro-onduleurs n'ont pas de compteur
+d'énergie : l'ECU compte l'énergie, une seule fois. Des micro-onduleurs
+créés sans leur ECU sont comptés à part entière dans le widget et l'action
+« lire la production solaire ».
 
 **Lecture seule.** Pas de marche/arrêt ni de limite de puissance via l'ECU
 dans cette version ; l'action « régler la limite de puissance solaire » ne
@@ -198,15 +214,13 @@ quand l'action de lecture est la première de la scène).
 - **« …does not answer: it sleeps without sun »** sur une commande :
   l'onduleur dort ; réessayez quand il produit.
 - **Pas de marche/arrêt** : le firmware n'en a pas (voir plus haut).
-- **L'énergie totale a baissé** : certains firmwares remettent ce compteur
-  à zéro ; une lecture basse isolée est ignorée, une baisse durable est
-  publiée.
+- **L'énergie totale ne bouge plus** : une baisse ou un saut est retenu
+  (le statut le dit, avec les deux valeurs) : cliquez sur **Accepter
+  l'énergie totale** s'il est réel.
 - **L'ECU ne répond pas** : vérifiez son adresse, qu'il est sur votre
   réseau (`nc -v <adresse de l'ECU> 8899` depuis un ordinateur, puis tapez
   `APS1100160001END` : il répond une ligne qui commence par `APS11`), et
   débranchez-le une minute s'il est bloqué.
-- **L'énergie totale de l'ECU ne bouge plus** : un saut a été retenu (le
-  log le dit) : enregistrez la configuration pour l'accepter.
 - Logs : le niveau de log de l'intégration se règle avec la variable
   `LOG_LEVEL`.
 

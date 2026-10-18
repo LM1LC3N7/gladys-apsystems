@@ -41,8 +41,8 @@ export const AWAKE_POWER = 50;
 export const LONG_SILENCE = 24 * 60 * 60_000;
 /** A silence this long between two readings starts a new solar day. */
 export const NEW_DAY_GAP = 3 * 60 * 60_000;
-/** A lifetime index lower than the last one is published only once confirmed. */
-export const INDEX_CONFIRMATIONS = 3;
+/** The margin of the EZ1 lifetime index guard (src/guard.js), on top of 1.5 x its max power. */
+export const EZ1_INDEX_SLACK_KWH = 0.2;
 
 /**
  * Production started / stopped, with hysteresis: started after a minute at
@@ -58,6 +58,9 @@ export const PRODUCTION = {
 /** The documented bounds of the EZ1-M, used until the inverter says its own. */
 export const DEFAULT_LIMITS = { min: 30, max: 800 };
 
+// Modified port of HAEdwin/homeassistant-apsystems_ecu_reader 2.15.0 (const.py:
+// PORT, DEFAULT_SCAN_INTERVAL, DEFAULT_PORT_RETRIES) and ksheumaker/homeassistant-
+// apsystems_ecur (the 5 s socket pause), Apache-2.0: see THIRD_PARTY_NOTICES.md.
 /**
  * The APsystems ECU gateways (ECU-B, ECU-R, ECU-C), TCP port 8899. The ECU
  * is known to hang when it is queried too often: the reference
@@ -84,9 +87,11 @@ export const ECU = {
   /**
    * The lifetime index may rise by at most this much power per inverter the
    * ECU knows (kW) over the time since the last published value, plus
-   * INDEX_SLACK_KWH; a bigger jump is held (see `ecuIndexStep`).
+   * INDEX_SLACK_KWH, over two intervals at least; a bigger jump, or a fall, is held (src/guard.js).
    */
   INDEX_KW_PER_INVERTER: 2,
+  /** The inverters assumed when the ECU says neither how many it knows nor lists them. */
+  UNKNOWN_INVERTERS: 80,
   INDEX_SLACK_KWH: 0.5,
 };
 
@@ -98,7 +103,7 @@ export const ALARMS = {
 };
 
 /** Manifest keys (forever: stored in user scenes and dashboards). */
-export const ACTIONS = { TEST: 'test_connection' };
+export const ACTIONS = { TEST: 'test_connection', ACCEPT_INDEX: 'accept_index' };
 export const SCENE_ACTIONS = { SET_POWER_LIMIT: 'set_power_limit', PRODUCTION: 'get_production' };
 export const SCENE_TRIGGERS = {
   STARTED: 'production_started',

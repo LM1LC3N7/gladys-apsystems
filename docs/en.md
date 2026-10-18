@@ -63,9 +63,24 @@ added up, not lost.
 
 The **lifetime energy** feature is a production index: Gladys turns it into
 a 30-minute production (the "Lifetime energy (30-minute production)"
-feature, which Gladys fills itself) for its energy screens. The index never
-jumps down then up: a single low reading (a glitch at wake-up) is ignored,
-so it is never counted twice as production.
+feature, which Gladys fills itself) for its energy screens. Gladys counts
+every rise of an index in full, so the integration guards it (EZ1 and ECU
+alike):
+
+- a 0 (or a value missing) is never published;
+- a rise is published when the inverters could have produced it: at most
+  1.5 times the maximum power of an EZ1 (2 kW per inverter behind an ECU)
+  since the last value published, over two intervals at least, plus a small
+  margin;
+- a fall, or a larger jump, is **held back**: never accepted by repetition
+  nor by time. The connection status (it stays green) and the **Test the
+  inverters** button show it, with both values. If it is real (a counter
+  reset, an inverter replaced), press **Accept the lifetime energy**: the
+  next reading in that direction is taken. A jump taken is counted once as
+  production; a fall counts nothing. A value back to normal (it was a
+  glitch) ends the hold by itself;
+- the last value published and what is held are kept in
+  `/data/state.json`, so a restart changes nothing.
 
 ## Power limit and on/off
 
@@ -114,16 +129,19 @@ the Home Assistant integration recommends), one connection at a time for
 all your ECUs, with a 5-second pause between two queries; a reading is two
 queries (the ECU, then its inverters). After a failure, the next attempt
 waits 5 minutes, then 10, then 20, up to 30 minutes: never sooner than the
-interval, even when the link to Gladys drops and comes back. The test button
-reports an ECU read less than an interval ago from that reading instead of
-asking it again. After three failed readings in a row the status turns
+interval, even when the link to Gladys drops and comes back or the
+integration restarts (the pace is kept in `/data/state.json`). The test
+button never asks an ECU before its next reading is due: it reports the
+last one. After three failed readings in a row the status turns
 red: an ECU that hangs usually comes back after unplugging it for a
 minute.
 
 **The night.** The ECU is powered by the grid and keeps answering; its
 micro-inverters go offline with the sun. That is the **sleeping (night)**
 state, never an error: the ECU's power reads 0 W, each micro-inverter is
-offline with 0 W, the rest keeps its last value.
+offline with 0 W, the rest keeps its last value. A micro-inverter the ECU
+no longer lists, or has not reported for two intervals, is shown offline
+at 0 W too.
 
 **The figures** are the ECU's own: its current power, its energy of the day,
 its lifetime energy, the number of inverters online; per micro-inverter,
@@ -131,13 +149,13 @@ what the ECU gives (online, the power of each panel, the AC voltage, the
 grid frequency, the temperature while online). An inverter of a type the
 reference does not know only gets **online**, and the inverters listed after
 it are not read (a guess would invent inverters). The ECU's **lifetime
-energy** is the production index of the Gladys energy monitoring, with
-strict rules: a 0 is never published (some ECU firmware answer 0 now and
-then), a fall is published only once confirmed by three readings, and a
-jump up larger than the inverters could have produced is **held back**:
-never accepted by repetition, only once you **save the configuration**
-(the next reading is then taken). The micro-inverters have no energy
-counter: the ECU counts the energy, once.
+energy** is the production index of the Gladys energy monitoring, guarded
+as described in [Energy monitoring](#energy-monitoring) (some ECU firmware
+answer 0 now and then; 80 inverters are assumed when the ECU does not say
+how many it has). The micro-inverters have no energy counter: the ECU
+counts the energy, once. Micro-inverters created without their ECU are
+counted on their own in the widget and the "read the solar production"
+action.
 
 **Read-only.** No on/off nor power limit through the ECU in this version;
 the "set the solar power limit" action is for EZ1s only. The scene triggers
@@ -182,14 +200,13 @@ the read action is the first of the scene).
 - **"…does not answer: it sleeps without sun"** on a command: the inverter
   is asleep; try again once it produces.
 - **No on/off feature**: the firmware has none (see above).
-- **The lifetime energy went down**: some firmware reset this counter; a
-  single low reading is ignored, a lasting one is published.
+- **The lifetime energy does not move any more**: a fall or a jump is
+  held back (the status says so, with both values): press **Accept the
+  lifetime energy** if it is real.
 - **ECU not answering**: check its address, that it is on your network
   (`nc -v <ECU address> 8899` from a computer, then type
   `APS1100160001END`: it answers a line starting with `APS11`), and unplug
   it for a minute if it hangs.
-- **The ECU's lifetime energy does not move any more**: a jump was held
-  back (the log says so): save the configuration to accept it.
 - Logs: the integration's log level is set with the `LOG_LEVEL` variable.
 
 ## Privacy

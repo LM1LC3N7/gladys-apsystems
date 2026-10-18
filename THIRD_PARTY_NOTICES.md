@@ -17,6 +17,7 @@ the ECU.
 - Source: https://github.com/HAEdwin/homeassistant-apsystems_ecu_reader
 - Files used: `custom_components/apsystems_ecu_reader/ecu_api.py`,
   `ecu_helpers.py`, `const.py`, `sensor.py`, `__init__.py`, `README.md`
+- Copyright 2025 HAEdwin
 - Authors: HAEdwin, with checking12, ksheumaker and the Home Assistant
   community
 - License: Apache License, Version 2.0 (full text below)

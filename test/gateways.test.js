@@ -6,6 +6,7 @@
 // -----------------------------------------------------------------------------
 
 import { afterEach, test } from 'node:test';
+import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
 import { ApsystemsApp } from '../src/app.js';
@@ -15,6 +16,7 @@ import { EcuClient, EcuQueue } from '../src/ecu.js';
 import { fakeEcu, installEcus } from './helpers/fakeEcu.js';
 import { fakeInverter, installInverters } from './helpers/fakeEz1.js';
 import { createFakeTimers } from './helpers/fakeTimers.js';
+import { StateStore, memoryIo } from '../src/store.js';
 
 const quiet = {
   info() {},
@@ -34,7 +36,15 @@ const ID_ECU = 'ext:apsystems:ecu:216300012345';
 const ID_DS3 = 'ext:apsystems:ecu_inverter:703000012345';
 const ID_EZ1 = 'ext:apsystems:inverter:E07000000001';
 
-async function setup({ ecus, ecuHosts, hosts = '', inverters = {}, devices = [] }) {
+async function setup({
+  ecus,
+  ecuHosts,
+  hosts = '',
+  inverters = {},
+  devices = [],
+  io = memoryIo(),
+  now = NOON,
+}) {
   fake = installInverters(inverters);
   const transport = installEcus(ecus);
   const config = {
@@ -45,12 +55,13 @@ async function setup({ ecus, ecuHosts, hosts = '', inverters = {}, devices = [] 
   };
   const gladys = createFakeGladys({ selector: 'apsystems', config, devices });
   const timers = createFakeTimers();
-  const clock = { now: NOON };
+  const clock = { now };
   const app = new ApsystemsApp({
     gladys,
     logger: quiet,
     now: () => clock.now,
     timers,
+    store: new StateStore({ dir: '/data', io }),
     ecuQueue: new EcuQueue({ pause: 0 }),
     ecuClientFactory: (options) => new EcuClient({ ...options, request: transport.request }),
   });
@@ -60,8 +71,9 @@ async function setup({ ecus, ecuHosts, hosts = '', inverters = {}, devices = [] 
   gladys.onSceneAction(SCENE_ACTIONS.PRODUCTION, (fields) => app.getProduction(fields));
   gladys.onWidgetGet(WIDGETS.SOLAR, (request) => app.getWidget(WIDGETS.SOLAR, request));
   gladys.onAction(ACTIONS.TEST, () => app.testConnection());
+  gladys.onAction(ACTIONS.ACCEPT_INDEX, () => app.acceptIndex());
   await gladys.connect();
-  const ctx = { app, gladys, timers, clock, config, ecus, transport };
+  const ctx = { app, gladys, timers, clock, config, ecus, transport, io };
   ctx.advance = async (ms) => {
     clock.now += ms;
     await timers.runIntervals();
@@ -250,7 +262,7 @@ test('the inverter query failing never blocks the figures of the ECU', async () 
   assert.equal(ctx.status().connected, true);
 });
 
-test('the lifetime index: a 0 is never published, a jump waits for a save of the configuration', async () => {
+test('the lifetime index: a 0 is never published, a jump is shown and waits for accept_index', async () => {
   const ctx = await setup({ ecus: { [E]: fakeEcu() } });
   await startAndCreate(ctx);
   ctx.ecus[E].lifetime = 0;
@@ -261,9 +273,146 @@ test('the lifetime index: a 0 is never published, a jump waits for a save of the
     await ctx.advance(5 * MIN);
   }
   assert.equal(ctx.state(ID_ECU, 'energy_total'), 1234.5, 'held, whatever the repetitions');
+  assert.equal(ctx.status().connected, true, 'held is not broken: the status stays green');
+  assert.match(
+    ctx.status().message.fr,
+    /l’énergie totale a sauté de 1234\.5 à 99999 kWh.*cette différence \(98764\.5 kWh\) sera comptée comme production/,
+  );
+  const test = await ctx.gladys.fake.action(ACTIONS.TEST);
+  assert.match(test.data.message.en, /jumped from 1234\.5 to 99999 kWh/);
+  // A save of the configuration does not accept it any more.
   await ctx.app.configUpdated(ctx.config);
   await ctx.advance(5 * MIN);
+  assert.equal(ctx.state(ID_ECU, 'energy_total'), 1234.5);
+  const accepted = await ctx.gladys.fake.action(ACTIONS.ACCEPT_INDEX);
+  assert.match(accepted.data.message.en, /1 lifetime energy value held back will be taken/);
+  await ctx.advance(5 * MIN);
   assert.equal(ctx.state(ID_ECU, 'energy_total'), 99_999);
+  assert.doesNotMatch(ctx.status().message.en, /jumped/);
+});
+
+test('a created inverter missing from the last frame, or seen too long ago, is offline at 0 W', async () => {
+  const ctx = await setup({
+    ecus: {
+      [E]: fakeEcu({
+        inverters: [
+          { uid: '703000012345', online: true, type: '01', power: [120, 130], voltage: [231] },
+          { uid: '703000012346', online: true, type: '01', power: [100, 100], voltage: [231] },
+        ],
+      }),
+    },
+  });
+  await startAndCreate(ctx);
+  const ID_2 = 'ext:apsystems:ecu_inverter:703000012346';
+  assert.deepEqual([ctx.state(ID_2, 'online'), ctx.state(ID_2, 'power')], [1, 200]);
+  // The ECU no longer lists the second one (removed, re-paired).
+  ctx.ecus[E].inverters = ctx.ecus[E].inverters.slice(0, 1);
+  await ctx.advance(5 * MIN);
+  assert.deepEqual([ctx.state(ID_2, 'online'), ctx.state(ID_2, 'power')], [0, 0]);
+  const one = await ctx.gladys.fake.sceneAction(SCENE_ACTIONS.PRODUCTION, { inverter: ID_2 });
+  assert.deepEqual([one.data.outputs.power, one.data.outputs.sleeping], [0, true]);
+  // The inverter query fails for long: the first one goes stale after 2 intervals.
+  ctx.ecus[E].inverterFails = true;
+  await ctx.advance(5 * MIN);
+  assert.equal(ctx.state(ID_DS3, 'online'), 1, 'one interval: still the last reading');
+  await ctx.advance(5 * MIN);
+  await ctx.advance(5 * MIN);
+  assert.deepEqual([ctx.state(ID_DS3, 'online'), ctx.state(ID_DS3, 'power')], [0, 0]);
+  const widget = (
+    await ctx.gladys.fake.widgetGet(WIDGETS.SOLAR, {
+      settings: { inverter: ID_DS3 },
+      language: 'en',
+    })
+  ).data.content;
+  assert.equal(
+    widget.components.find((c) => c.type === 'status').items[0].value,
+    'Sleeping (night)',
+  );
+});
+
+test('the bound of the index: 2 kW per inverter, 80 when the ECU does not say', async () => {
+  const ctx = await setup({ ecus: { [E]: fakeEcu({ layout: '03', inverters: [] }) } });
+  await startAndCreate(ctx);
+  assert.equal(ctx.state(ID_ECU, 'energy_total'), 1234.5);
+  // 50 kWh in 5 minutes (two intervals of margin: 10 minutes): 300 kW, within 80 x 2 kW x 1/6 h.
+  ctx.ecus[E].lifetime = 1234.5 + 26;
+  await ctx.advance(5 * MIN);
+  assert.equal(ctx.state(ID_ECU, 'energy_total'), 1260.5);
+  const small = await setup({ ecus: { [E]: fakeEcu() } });
+  await startAndCreate(small);
+  small.ecus[E].lifetime = 1234.5 + 2;
+  await small.advance(5 * MIN);
+  assert.equal(
+    small.state(ID_ECU, 'energy_total'),
+    1234.5,
+    '2 kWh in 10 minutes for one DS3: held',
+  );
+});
+
+test('/data/state.json: the guard and the pace survive a restart of the container', async () => {
+  const io = memoryIo();
+  const first = await setup({ ecus: { [E]: fakeEcu() }, io });
+  await startAndCreate(first);
+  first.ecus[E].lifetime = 99_999;
+  await first.advance(5 * MIN);
+  const saved = JSON.parse(io.files.get(join('/data', 'state.json')));
+  assert.deepEqual(saved.guards['ecu:216300012345'].last.value, 1234.5);
+  assert.equal(saved.guards['ecu:216300012345'].held.direction, 'up');
+  assert.equal(saved.pacing[E].nextAt, NOON + 10 * MIN);
+  // A new process, a minute later: the ECU is not asked before its time, the jump is still held.
+  const second = await setup({
+    ecus: { [E]: fakeEcu({ lifetime: 99_999 }) },
+    io,
+    now: NOON + 6 * MIN,
+    devices: first.gladys.fake.devices,
+  });
+  await second.app.start(second.config);
+  assert.equal(second.transport.count(), 0, 'not due yet');
+  assert.match(second.status().message.en, /jumped from 1234\.5 to 99999 kWh/);
+  await second.advance(4 * MIN);
+  assert.equal(second.transport.count(), 2);
+  assert.equal(second.state(ID_ECU, 'energy_total'), undefined, 'still held after the restart');
+  // A corrupted file: ignored, nothing breaks; a date far ahead is capped.
+  io.files.set(
+    join('/data', 'state.json'),
+    JSON.stringify({
+      pacing: { [E]: { nextAt: NOON + 1e12, misses: 3 } },
+      guards: { __proto__: 1 },
+    }),
+  );
+  const third = await setup({ ecus: { [E]: fakeEcu() }, io, now: NOON });
+  await third.app.start(third.config);
+  assert.equal(third.app.gateways.pacing.get(E).nextAt <= NOON + 60 * MIN, true);
+  assert.equal(Object.prototype.last, undefined);
+});
+
+test('micro-inverters created without their ECU still count; an unknown type has no power tile', async () => {
+  const ctx = await setup({
+    ecus: {
+      [E]: fakeEcu({
+        inverters: [
+          { uid: '703000012345', online: true, type: '01', power: [120, 130], voltage: [231] },
+          { uid: 'a00000000001', online: true, type: '09' },
+        ],
+      }),
+    },
+  });
+  await ctx.app.start(ctx.config);
+  for (const device of ctx.gladys.fake.discoveredDevices.filter((d) => d.external_id !== ID_ECU)) {
+    await ctx.gladys.fake.deviceCreated(device);
+  }
+  const all = await ctx.gladys.fake.sceneAction(SCENE_ACTIONS.PRODUCTION, {});
+  assert.deepEqual([all.data.outputs.power, all.data.outputs.inverters], [250, 2]);
+  const totals = (await ctx.gladys.fake.widgetGet(WIDGETS.SOLAR, { settings: {}, language: 'en' }))
+    .data.content;
+  assert.equal(totals.components[1].value, 250);
+  const unknown = (
+    await ctx.gladys.fake.widgetGet(WIDGETS.SOLAR, {
+      settings: { inverter: 'ext:apsystems:ecu_inverter:a00000000001' },
+      language: 'en',
+    })
+  ).data.content;
+  assert.equal(unknown.components.filter((c) => c.type === 'value').length, 0);
 });
 
 test('scenes and widget: the ECU counts once, its inverters never twice; read-only', async () => {

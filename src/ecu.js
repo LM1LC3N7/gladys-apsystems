@@ -1,4 +1,9 @@
 // -----------------------------------------------------------------------------
+// Modified port of HAEdwin/homeassistant-apsystems_ecu_reader 2.15.0
+// (ecu_api.py: open_socket, send_read_from_socket, get_update) and
+// ksheumaker/homeassistant-apsystems_ecur (APSystemsSocket.py), Apache-2.0:
+// see THIRD_PARTY_NOTICES.md.
+//
 // The ECU client: TCP port 8899 on the LAN, one connection per query (the
 // ECU-R-Pro needs a fresh connection for each one, the reference does it for
 // every model), ONE connection at a time for all the ECUs together (the
@@ -23,6 +28,13 @@ import {
  * One query on its own connection: connect, write the line, read one whole
  * frame (bounded), close. Resolves the frame (a Buffer).
  */
+/** A connection that could not be opened (refused, unreachable): safe to try again. */
+function connectError(err) {
+  const error = new EcuError('network', err?.code ?? err?.message ?? String(err));
+  error.connectFailed = true;
+  return error;
+}
+
 export function tcpRequest({
   host,
   port,
@@ -34,6 +46,7 @@ export function tcpRequest({
   return new Promise((resolve, reject) => {
     const frames = new FrameReader(maxBytes);
     let settled = false;
+    let connected = false;
     let socket;
     const finish = (err, frame) => {
       if (settled) {
@@ -55,10 +68,13 @@ export function tcpRequest({
     try {
       socket = connect({ host, port });
     } catch (err) {
-      finish(new EcuError('network', err?.code ?? err?.message ?? String(err)));
+      finish(connectError(err));
       return;
     }
-    socket.on('connect', () => socket.write(payload));
+    socket.on('connect', () => {
+      connected = true;
+      socket.write(payload);
+    });
     socket.on('data', (chunk) => {
       try {
         const frame = frames.push(chunk);
@@ -70,7 +86,11 @@ export function tcpRequest({
       }
     });
     socket.on('error', (err) =>
-      finish(new EcuError('network', err?.code ?? err?.message ?? String(err))),
+      finish(
+        connected
+          ? new EcuError('network', err?.code ?? err?.message ?? String(err))
+          : connectError(err),
+      ),
     );
     socket.on('close', () =>
       finish(new EcuError('network', 'the ECU closed the connection before a whole answer')),
@@ -115,7 +135,11 @@ export class EcuClient {
     this.attempts = Math.max(1, attempts);
   }
 
-  /** One query through the shared queue; a refused connection is tried again (open_socket). */
+  /**
+   * One query through the shared queue. Only a connection that could not be
+   * opened is tried again (open_socket): a query that reached the ECU is
+   * never sent twice.
+   */
   async query(payload) {
     for (let attempt = 1; ; attempt += 1) {
       try {
@@ -124,7 +148,7 @@ export class EcuClient {
         );
       } catch (err) {
         const error = err instanceof EcuError ? err : new EcuError('network', err?.message);
-        if (error.code !== 'network' || attempt >= this.attempts) {
+        if (!error.connectFailed || attempt >= this.attempts) {
           throw error;
         }
       }

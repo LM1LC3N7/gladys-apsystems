@@ -8,7 +8,7 @@
 // numbers in others: `num` takes both.
 // -----------------------------------------------------------------------------
 
-import { INDEX_CONFIRMATIONS, NEW_DAY_GAP } from './constants.js';
+import { NEW_DAY_GAP } from './constants.js';
 
 /** A number from a string or a number; null when there is none. */
 export function num(value) {
@@ -69,19 +69,24 @@ export function outputOf(data = {}) {
       continue;
     }
     const n = Number(match[1]);
+    // A counter missing or not a number is unknown (null), never 0: a sum
+    // with a 0 in it would be a fall of the index.
+    const counter = (value) => (num(value) === null ? null : round(Math.max(0, num(value)), 3));
     inputs.push({
       n,
       power: round(Math.max(0, num(data[`p${n}`]) ?? 0), 1),
-      energy: round(Math.max(0, num(data[`e${n}`]) ?? 0), 3),
-      lifetime: round(Math.max(0, num(data[`te${n}`]) ?? 0), 3),
+      energy: counter(data[`e${n}`]),
+      lifetime: counter(data[`te${n}`]),
     });
   }
   inputs.sort((a, b) => a.n - b.n);
   const sum = (field, digits) =>
-    round(
-      inputs.reduce((total, input) => total + input[field], 0),
-      digits,
-    );
+    inputs.some((input) => input[field] === null)
+      ? null
+      : round(
+          inputs.reduce((total, input) => total + input[field], 0),
+          digits,
+        );
   return {
     inputs,
     power: sum('power', 1),
@@ -144,70 +149,4 @@ export function dayEnergyStep(previous, counter, at) {
     base = newDay ? 0 : base + previous.last;
   }
   return { base, last: counter, at, value: round(base + counter, 3) };
-}
-
-/**
- * The lifetime index Gladys turns into 30-minute production: it must never
- * jump down then up again (the core would count the jump back as
- * production). A lower value is published only once INDEX_CONFIRMATIONS
- * readings in a row agree (a firmware reset of the counter is real), a
- * single low reading is ignored. Resolves { state, publish }.
- */
-export function indexStep(state, value) {
-  if (value === null || value === undefined || value < 0) {
-    return { state, publish: undefined };
-  }
-  if (!state || state.value === undefined || value >= state.value) {
-    return { state: { value, lower: 0 }, publish: value };
-  }
-  const lower = state.lower + 1;
-  if (lower >= INDEX_CONFIRMATIONS) {
-    return { state: { value, lower: 0 }, publish: value };
-  }
-  return { state: { value: state.value, lower }, publish: undefined };
-}
-
-const HOUR = 3_600_000;
-
-/**
- * The lifetime index of an ECU, stricter than the EZ1's `indexStep` (the
- * rules of the energy indexes the core bills: it skips a fall but counts
- * every rise IN FULL). `state` is { value, at, drop, held, accept }: the last
- * value published and when, the lower values read since, a jump held back.
- * - never 0 (nor below): the ECU firmware sometimes answers 0 (the reference
- *   filters it too);
- * - a rise plausible since the last value published (at most `maxKw` on
- *   average, plus ECU.INDEX_SLACK_KWH) goes through;
- * - a bigger rise is held: NEVER confirmed by repetition nor by time (every
- *   value at or above it stays held), taken only after an explicit gesture
- *   of the user (a save of the configuration: `accept`);
- * - a fall goes through once INDEX_CONFIRMATIONS readings in a row agree,
- *   never decreasing (a counter reset is real; a single low reading is not).
- * Resolves { state, publish }.
- */
-export function ecuIndexStep(state, value, at, { maxKw, slack }) {
-  const s = state ?? {};
-  const take = () => ({ state: { value, at, drop: undefined, held: undefined }, publish: value });
-  if (!Number.isFinite(value) || value <= 0) {
-    return { state: { ...s, drop: undefined }, publish: undefined };
-  }
-  if (!Number.isFinite(s.value) || s.value <= 0) {
-    return take();
-  }
-  if (value >= s.value) {
-    const hours = Number.isFinite(s.at) ? Math.max(0, at - s.at) / HOUR : 0;
-    const plausible = value - s.value <= maxKw * hours + slack;
-    const aboveHeld = Number.isFinite(s.held) && value >= s.held;
-    if ((plausible && !aboveHeld) || (s.accept && Number.isFinite(s.held))) {
-      return take();
-    }
-    const held = Math.min(value, Number.isFinite(s.held) ? s.held : Infinity);
-    return { state: { ...s, drop: undefined, held }, publish: undefined };
-  }
-  const drop =
-    s.drop && value >= s.drop.value ? { value, count: s.drop.count + 1 } : { value, count: 1 };
-  if (drop.count >= INDEX_CONFIRMATIONS) {
-    return take();
-  }
-  return { state: { ...s, drop, held: undefined, accept: false }, publish: undefined };
 }

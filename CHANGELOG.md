@@ -26,7 +26,25 @@ the notes of the version's GitHub Release.
   a failure; at night, inverters offline is "sleeping", never an error. The
   "solar production started/stopped" triggers, the widget and the "read the
   solar production" action cover the ECUs. Never tested with a real ECU.
-  Nothing changes for EZ1 users.
+  The EZ1 keys, external ids and features do not change.
+- An "Accept the lifetime energy" button (`accept_index`): a lifetime energy
+  value held back (see Changed) is taken only through it, in its direction.
+- The index guards and the pace of the ECUs are kept in `/data/state.json`
+  (atomic writes): a restart neither forgets a value held back nor queries
+  an ECU before its time.
+
+### Changed
+
+- Store name: "APsystems EZ1 & ECU" (was "APsystems EZ1"), and the
+  catalog description.
+- The lifetime energy index (EZ1 and ECU) is guarded like the other energy
+  integrations: never 0 nor a missing counter (first reading included); a
+  rise the inverter could not have produced, or a fall, is held back, shown
+  in the connection status (still green) and the test button with both
+  values, and taken only with the "Accept the lifetime energy" button, never
+  by repetition nor by time. Before, an EZ1 counter that read lower 3 times
+  in a row (0 included) was published. An index already at 0 or too low in
+  Gladys will see the next value counted once as production.
 
 ### Fixed
 
@@ -34,7 +52,6 @@ the notes of the version's GitHub Release.
   which keeps it in memory.
 - A device republished in Discovery keeps every feature of the created one.
 - The Docker image ships `LICENSE` and `THIRD_PARTY_NOTICES.md`.
-
 - Docs: the outputs of the scene actions come from the variable list
   (`{{<step>.<action>.<key>}}`), not `{{<key>}}`.
 

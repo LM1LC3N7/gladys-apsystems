@@ -30,11 +30,11 @@ for (const key of Object.values(WIDGETS)) {
 
 // --- Configuration screen buttons ----------------------------------------------
 gladys.onAction(ACTIONS.TEST, () => app.testConnection());
+gladys.onAction(ACTIONS.ACCEPT_INDEX, () => app.acceptIndex());
 
 // --- Configuration changed by the user ----------------------------------------
 gladys.onConfigUpdated((config) => {
   logger.info('Configuration updated: restarting');
-  // A save by the user also accepts an ECU lifetime index jump held back.
   return app.configUpdated(config);
 });
 

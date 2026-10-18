@@ -214,17 +214,28 @@ export function parseEcuFrame(frame) {
     }
     return Number(text);
   };
+  // The firmware and the time zone are read at best: a frame cut there
+  // keeps its figures (they come first).
+  const atBest = (fn) => {
+    try {
+      return fn();
+    } catch {
+      return null;
+    }
+  };
   if (layout === '01') {
     ecu.inverters = r.int(46, 2);
     ecu.online = r.int(48, 2);
-    const vsl = digits(52);
-    ecu.firmware = r.str(55, vsl);
-    const tsl = digits(55 + vsl);
-    ecu.timezone = r.str(58 + vsl, tsl);
+    const vsl = atBest(() => digits(52));
+    if (vsl !== null) {
+      ecu.firmware = atBest(() => r.str(55, vsl));
+      const tsl = atBest(() => digits(55 + vsl));
+      ecu.timezone = tsl === null ? null : atBest(() => r.str(58 + vsl, tsl));
+    }
   } else if (layout === '02') {
     ecu.inverters = r.int(39, 2);
     ecu.online = r.int(41, 2);
-    ecu.firmware = r.str(52, digits(49));
+    ecu.firmware = atBest(() => r.str(52, digits(49)));
   }
   ecu.firmware = clean(ecu.firmware);
   ecu.timezone = clean(ecu.timezone);
@@ -262,8 +273,9 @@ export function parseInverterFrame(frame) {
   }
   const r = reader(frame);
   const inverters = new Map();
-  if (r.str(14, 2) !== '00' || r.str(15, 2) !== '01') {
-    // The ECU has no inverter data to give (none paired yet).
+  // A frame too short for its header (26 bytes), or without inverter data
+  // (none paired yet): no inverter, not an error.
+  if (r.end < 26 || r.str(14, 2) !== '00' || r.str(15, 2) !== '01') {
     return { timestamp: null, inverters, truncated: false };
   }
   const count = r.int(17, 2);
@@ -279,7 +291,9 @@ export function parseInverterFrame(frame) {
       throw new EcuError('protocol', 'invalid inverter id');
     }
     const online = r.byte(at + 6) !== 0;
-    const type = r.str(at + 7, 2);
+    const rawType = r.str(at + 7, 2);
+    // Two letters or digits, else unknown (it ends up in a device param).
+    const type = /^[0-9A-Za-z]{2}$/.test(rawType) ? rawType : null;
     const inverter = {
       uid,
       online,

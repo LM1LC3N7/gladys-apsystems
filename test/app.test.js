@@ -12,6 +12,7 @@ import { ACTIONS, PACING, SCENE_ACTIONS, SCENE_TRIGGERS, WIDGETS } from '../src/
 import { buildInverterDevice } from '../src/devices.js';
 import { fakeInverter, installInverters } from './helpers/fakeEz1.js';
 import { createFakeTimers } from './helpers/fakeTimers.js';
+import { StateStore, memoryIo } from '../src/store.js';
 
 const quiet = {
   info() {},
@@ -39,7 +40,14 @@ async function setup({ inverters, hosts = Object.keys(inverters).join(', '), dev
   const gladys = createFakeGladys({ selector: 'apsystems', config, devices });
   const timers = createFakeTimers();
   const clock = { now: NOON };
-  const app = new ApsystemsApp({ gladys, logger: quiet, now: () => clock.now, timers });
+  const io = memoryIo();
+  const app = new ApsystemsApp({
+    gladys,
+    logger: quiet,
+    now: () => clock.now,
+    timers,
+    store: new StateStore({ dir: '/data', io }),
+  });
   gladys.onScanRequest(() => app.scan());
   gladys.onDeviceCreated((device) => app.deviceCreated(device));
   gladys.onSetValue((device, feature, value) => app.setValue(device, feature, value));
