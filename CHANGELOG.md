@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-18
+
 ### Added
 
 - APsystems ECU gateways (ECU-B, ECU-R, ECU-C), asked for on the forum
@@ -93,5 +95,6 @@ the notes of the version's GitHub Release.
   limit, state, alarms) or the totals of all of them.
 - "Test the inverters" button.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-apsystems/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/LM1LC3N7/gladys-apsystems/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/LM1LC3N7/gladys-apsystems/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/LM1LC3N7/gladys-apsystems/releases/tag/v0.1.1
