@@ -20,7 +20,7 @@ Unofficial: not affiliated with APsystems. Sibling of `gladys-hoymiles`
 
 ```bash
 npm install
-npm test                                  # node --test, the built-in runner
+npm test                                  # node --test --test-timeout=60000
 node --test test/app.test.js              # one file
 npm run lint                              # ESLint
 npm run format:check                      # Prettier, as the CI runs it
@@ -104,6 +104,12 @@ test/helpers/       fake EZ1 inverters (fetch, firmware variants, sleep),
 
 ## Rules
 
+- **Features follow the core model.** Every feature has a numeric `min` and
+  `max`, `read_only` and `has_feedback`: Gladys answers HTTP 422 otherwise,
+  and the SDK's fake Gladys does not check it (`test/features.test.js`
+  does). No device carries `poll_frequency`: Gladys 5.3 polls a device that
+  has one unless it says `should_poll: false`, and the integration reads on
+  its own timers (no `onPoll`).
 - **Unofficial.** Every user-facing surface says "unofficial connector, not
   affiliated with APsystems". Never use the APsystems logo.
 - **Keys are forever**: the manifest keys and the alarm ids

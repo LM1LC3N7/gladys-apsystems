@@ -18,6 +18,14 @@
 
 ## To confirm (built blind)
 
+- [ ] **Index guard on the wall clock** (noted 2026-11-03, SDK 0.16
+      migration, wave 6): `guardFor` builds the `IndexGuard` with
+      `now: this.now()` and the EZ1 and ECU readings pass `now` to
+      `guard.accept`, `this.now` being `Date.now`. A wall clock set back or
+      forward moves the guard's window. Port it to a session clock as
+      gladys-p1-monitor did (d4cff87, model gladys-openems) in a later wave,
+      with its own review; the index logic is left untouched by the
+      migration.
 - [ ] `e1`/`e2` restart from 0 every morning (the manual says "since
       start-up"), and the integration's day counter matches the AP EasyPower
       app's "today" over a day with a mid-day restart.
@@ -66,6 +74,16 @@
 
 ## Decisions
 
+- **SDK `^0.16.0`** (2026-11-03, migration wave 6): it adds the ai, tts and
+  music types; no effect here. No device carries `poll_frequency` (the
+  integration reads the EZ1 and the ECU on its own timers, no `onPoll`), so
+  Gladys 5.3 never polls them and `should_poll` is not needed. Every feature
+  already had a numeric `min` and `max`; `test/features.test.js` now checks
+  each EZ1 variant, the ECU and each micro-inverter type against the core
+  model (`test/helpers/coreFeature.js`). `npm test` runs with
+  `--test-timeout=60000`. `keywords`, `countries` and
+  `gladys_version >= 5.3.0` wait until Gladys 5.3 is widespread. Index logic
+  unchanged (see the open item on the guard clock).
 - **ECU read-only in v1**: no on/off per inverter, no power limit, no zero
   export, no ECU reboot (the reference has them for the ECU-R-Pro and the
   ECU-C only, through the ECU's HTTP pages). The "set the solar power
