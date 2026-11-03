@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-11-03
+
 ### Changed
 
 - Integration SDK 0.16 (no change for the devices).
@@ -123,7 +125,8 @@ the notes of the version's GitHub Release.
   limit, state, alarms) or the totals of all of them.
 - "Test the inverters" button.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-apsystems/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/LM1LC3N7/gladys-apsystems/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/LM1LC3N7/gladys-apsystems/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/LM1LC3N7/gladys-apsystems/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/LM1LC3N7/gladys-apsystems/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/LM1LC3N7/gladys-apsystems/compare/v0.1.1...v0.1.2
