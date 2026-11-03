@@ -7,7 +7,7 @@ human contributors.
 
 A Gladys Assistant **external integration** of type `device`: a Node.js
 service (Node 22+, ESM, no build step) in its own sandboxed Docker container,
-talking to Gladys through `@gladysassistant/integration-sdk` (v0.15). It
+talking to Gladys through `@gladysassistant/integration-sdk` (v0.16). It
 reads **APsystems EZ1** micro-inverters (balcony solar) on the LAN through
 their local API (HTTP, port 8050, "Local mode" enabled in the AP EasyPower
 app) and exposes each one as a Gladys device (production power total and per
